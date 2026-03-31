@@ -1,26 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 @import "tailwindcss";
+@config "../../tailwind.config.ts";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Backgrounds */
+  --bg-primary:    #0f0f1a;
+  --bg-surface:    #1a1a2e;
+  --bg-elevated:   #22223a;
+  --bg-hover:      #2a2a45;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* Borders */
+  --border-subtle: #2e2e4a;
+  --border-strong: #4a4a6a;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Text */
+  --text-primary:   #e8e6f0;
+  --text-secondary: #9896b0;
+  --text-muted:     #5f5e7a;
+
+  /* Brand accent */
+  --accent:         #7F77DD;
+  --accent-hover:   #9990e8;
+  --accent-subtle:  #2a2850;
+
+  /* Alarm severity */
+  --alarm-critical: #E24B4A;
+  --alarm-major:    #EF9F27;
+  --alarm-minor:    #FAC775;
+  --alarm-warning:  #85B7EB;
+  --alarm-ok:       #5DCAA5;
+
+  /* Technology type */
+  --tech-5g:  #7F77DD;
+  --tech-4g:  #1D9E75;
+  --tech-3g:  #EF9F27;
+  --tech-2g:  #85B7EB;
+  --tech-b2b: #D85A30;
+
+  /* Semantic */
+  --success: #5DCAA5;
+  --danger:  #E24B4A;
+  --warning: #EF9F27;
+  --info:    #85B7EB;
+
+  --font-sans: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
 }
