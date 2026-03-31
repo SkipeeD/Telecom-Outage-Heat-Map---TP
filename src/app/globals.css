@@ -1,54 +1,46 @@
+/* 1. External imports MUST come first */
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
-@import "tailwindcss";
-@config "../../tailwind.config.ts";
 
+/* 2. Tailwind framework import */
+@import "tailwindcss";
+
+/* 3. Design System Variables */
 :root {
-  /* Backgrounds */
   --bg-primary:    #0f0f1a;
   --bg-surface:    #1a1a2e;
   --bg-elevated:   #22223a;
   --bg-hover:      #2a2a45;
-
-  /* Borders */
   --border-subtle: #2e2e4a;
   --border-strong: #4a4a6a;
-
-  /* Text */
   --text-primary:   #e8e6f0;
   --text-secondary: #9896b0;
   --text-muted:     #5f5e7a;
-
-  /* Brand accent */
   --accent:         #7F77DD;
   --accent-hover:   #9990e8;
-  --accent-subtle:  #2a2850;
-
-  /* Alarm severity */
-  --alarm-critical: #E24B4A;
-  --alarm-major:    #EF9F27;
-  --alarm-minor:    #FAC775;
-  --alarm-warning:  #85B7EB;
   --alarm-ok:       #5DCAA5;
+  --alarm-critical: #E24B4A;
 
-  /* Technology type */
-  --tech-5g:  #7F77DD;
-  --tech-4g:  #1D9E75;
-  --tech-3g:  #EF9F27;
-  --tech-2g:  #85B7EB;
-  --tech-b2b: #D85A30;
-
-  /* Semantic */
-  --success: #5DCAA5;
-  --danger:  #E24B4A;
-  --warning: #EF9F27;
-  --info:    #85B7EB;
-
+  /* Typography variables as defined in DESIGN_SYSTEM.md */
   --font-sans: 'IBM Plex Sans', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 }
 
-body {
-  background: var(--bg-primary);
+/* 4. Tailwind Theme Configuration */
+@theme inline {
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-surface: var(--bg-surface);
+  --color-border-subtle: var(--border-subtle);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+/* 5. Global Base Styles */
+html, body {
+  height: 100%;
+  margin: 0;
+  background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans);
+  overflow: hidden; /* Prevent outer container scroll as requested */
 }
