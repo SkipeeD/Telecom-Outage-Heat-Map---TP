@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { auth, db } from '@/lib/firebase'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
 
 export default function RegisterPage() {
@@ -51,7 +51,8 @@ export default function RegisterPage() {
         role: 'engineer',
       })
 
-      router.push('/')
+      await sendEmailVerification(userCredential.user)
+      router.push('/verify-email')
     } catch (err: any) {
       setError(err.message || 'Failed to register account.')
     } finally {

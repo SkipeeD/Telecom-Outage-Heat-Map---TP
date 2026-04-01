@@ -34,8 +34,12 @@ export default function LoginPage() {
 
     setLoading(true)
     try {
-      await signInWithEmailAndPassword(auth, email, password)
-      router.push('/')
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      if (!userCredential.user.emailVerified) {
+        router.push('/verify-email')
+        return
+      }
+      router.push('/map')
     } catch (err: any) {
       setError(err.message || 'Failed to login. Please check your credentials.')
     } finally {

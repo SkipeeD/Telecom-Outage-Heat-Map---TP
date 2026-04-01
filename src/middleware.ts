@@ -5,7 +5,7 @@ export function middleware(request: NextRequest) {
   const authSession = request.cookies.get('auth-session')
   const { pathname } = request.nextUrl
 
-  const publicRoutes = ['/login', '/register']
+  const publicRoutes = ['/login', '/register', '/verify-email']
   const isPublicRoute = publicRoutes.includes(pathname)
 
   // If no auth cookie and not on a public route, redirect to login
