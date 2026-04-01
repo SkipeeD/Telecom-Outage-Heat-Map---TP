@@ -41,19 +41,26 @@ export default function RegisterPage() {
 
     setLoading(true)
     try {
+      console.log('[register] creating user with email:', email)
       const userCredential = await createUserWithEmailAndPassword(auth, email, password)
       const user = userCredential.user
+      console.log('[register] user created:', user.uid)
 
       // Initialize user data in Firestore
+      console.log('[register] writing firestore doc')
       await setDoc(doc(db, 'users', user.uid), {
         email: user.email,
         createdAt: new Date().toISOString(),
         role: 'engineer',
       })
+      console.log('[register] firestore doc written')
 
+      console.log('[register] sending verification email')
       await sendEmailVerification(userCredential.user)
+      console.log('[register] verification email sent, redirecting')
       router.push('/verify-email')
     } catch (err: any) {
+      console.error('[register] error:', err)
       setError(err.message || 'Failed to register account.')
     } finally {
       setLoading(false)
