@@ -15,7 +15,7 @@ export function middleware(request: NextRequest) {
 
   // If auth cookie exists and on a public route, redirect to home
   if (authSession && isPublicRoute) {
-    return NextResponse.redirect(new URL('/', request.url))
+    return NextResponse.redirect(new URL('/map', request.url))
   }
 
   return NextResponse.next()
