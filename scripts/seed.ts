@@ -4,13 +4,19 @@ import { resolve } from 'path'
 // Load .env.local from project root before anything else
 config({ path: resolve(process.cwd(), '.env.local') })
 
-import { initializeApp, getApps } from 'firebase-admin/app'
+import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
-import { applicationDefault } from 'firebase-admin/app'
 import type { Technology, AlarmSeverity } from '../src/types'
 
 if (getApps().length === 0) {
-  initializeApp({ credential: applicationDefault() })
+  initializeApp({
+    credential: cert({
+      projectId:    process.env.FIREBASE_ADMIN_PROJECT_ID,
+      clientEmail:  process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+      // .env.local stores the private key with literal \n — replace them
+      privateKey:   process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
+  })
 }
 
 const db = getFirestore()
