@@ -165,7 +165,7 @@ function nextIncidentId(): string {
 async function seed() {
   console.log('Seeding Firestore...')
 
-  const antennaBatch  = db.batch()
+  const topologyBatch = db.batch()
   const alarmBatch    = db.batch()
   const incidentBatch = db.batch()
 
@@ -184,7 +184,7 @@ async function seed() {
       const latOffset = LAT_OFFSETS[Math.floor(i / 5)]
       const lonOffset = LON_OFFSETS[i % 4]
 
-      const antennaRef = db.collection('antennas').doc(id)
+      const antennaRef = db.collection('topology').doc(id)
 
       let currentAlarm: object | undefined = undefined
 
@@ -235,7 +235,7 @@ async function seed() {
         })
       }
 
-      antennaBatch.set(antennaRef, {
+      topologyBatch.set(antennaRef, {
         name:      `${city.name} ${area}`,
         siteId,                                  // e.g. T1000 — letter + 4 digits
         provider,
@@ -248,8 +248,8 @@ async function seed() {
     }
   }
 
-  await antennaBatch.commit()
-  console.log('Antennas written.')
+  await topologyBatch.commit()
+  console.log('Topology written.')
 
   await alarmBatch.commit()
   console.log('Alarms written.')
@@ -258,7 +258,7 @@ async function seed() {
   console.log('Incidents written.')
 
   const total = CITIES.length * 20
-  console.log(`Done — seeded ${total} antennas, ${incidentCounter - 1} incidents across ${CITIES.length} cities.`)
+  console.log(`Done — seeded ${total} topology sites, ${incidentCounter - 1} incidents across ${CITIES.length} cities.`)
 }
 
 seed().catch((err) => {
