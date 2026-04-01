@@ -5,11 +5,30 @@ export type AlarmSeverity = 'critical' | 'major' | 'minor' | 'warning' | 'ok'
 export interface Alarm {
   id: string
   antennaId: string
+  siteId: string
+  alarmNumber: number
   severity: AlarmSeverity
-  description: string
+  /** Alarm description text — maps to xlsx TEXT column */
+  text: string
+  /** 1 = active, 0 = cancelled — maps to xlsx ALARM_STATUS */
+  alarmStatus: number
   alarmTime: string
-  cancelTime?: string
+  cancelTime: string | null
   resolved: boolean
+}
+
+export interface Incident {
+  incidentNumber: string          // INC0000001 format
+  submitDate: string
+  alarmId: string
+  siteId: string
+  status: 'ASSIGNED' | 'IN PROGRESS' | 'RESOLVED' | 'CLOSED'
+  urgency: '1-Critical' | '2-High' | '3-Medium' | '4-Low'
+  impact: string
+  priority: '1-Critical' | '2-High' | '3-Medium' | '4-Low'
+  closedDate: string | null
+  assignee: string
+  resolvedDate: string | null
 }
 
 export interface Antenna {
