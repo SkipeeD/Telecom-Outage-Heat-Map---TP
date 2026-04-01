@@ -24,8 +24,10 @@ export interface Antenna {
   currentAlarm?: Alarm
 }
 
-export interface User {
+export interface UserProfile {
   uid: string
   email: string
-  displayName: string
+  role: 'engineer' | 'admin'
+  createdAt: string
 }
+
