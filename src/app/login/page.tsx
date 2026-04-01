@@ -35,6 +35,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      await userCredential.user.reload()
       if (!userCredential.user.emailVerified) {
         router.push('/verify-email')
         return

@@ -3,23 +3,28 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 
 export default function VerifyEmailPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const user = auth.currentUser
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) return
-      await user.reload()
-      if (user.emailVerified) {
-        clearInterval(interval)
-        router.push('/map')
-      }
-    }, 3000)
 
-    return () => clearInterval(interval)
+      const interval = setInterval(async () => {
+        await user.reload()
+        if (auth.currentUser?.emailVerified) {
+          clearInterval(interval)
+          router.push('/map')
+        }
+      }, 3000)
+
+      return () => clearInterval(interval)
+    })
+
+    return () => unsubscribe()
   }, [router])
 
   return (
