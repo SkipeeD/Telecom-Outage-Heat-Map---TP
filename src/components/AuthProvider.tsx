@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { onAuthStateChanged, User } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
-import { useRouter, usePathname } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 
 interface AuthContextType {
   user: User | null
@@ -20,7 +20,6 @@ export const useAuth = () => useContext(AuthContext)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const router = useRouter()
   const pathname = usePathname()
 
   useEffect(() => {
@@ -34,20 +33,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         document.cookie = 'auth-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
       }
-
-      // Handle protected routes on the client side
-      const publicRoutes = ['/login', '/register']
-      const isPublicRoute = publicRoutes.includes(pathname)
-
-      if (!user && !isPublicRoute) {
-        router.push('/login')
-      } else if (user && user.emailVerified && isPublicRoute) {
-        router.push('/')
-      }
     })
 
     return () => unsubscribe()
-  }, [router, pathname])
+  }, [pathname])
 
   return (
     <AuthContext.Provider value={{ user, loading }}>
