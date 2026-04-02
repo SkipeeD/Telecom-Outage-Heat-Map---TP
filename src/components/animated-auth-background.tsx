@@ -22,12 +22,12 @@ export function AnimatedAuthBackground({ title, subtitle }: { title: string, sub
   if (!mounted) return null
 
   return (
-    <div className="relative h-full w-full flex flex-col items-center justify-center bg-bg-surface overflow-hidden">
+    <div className="relative h-full w-full flex flex-col items-center justify-center bg-[var(--bg-base)] overflow-hidden transition-colors duration-300">
       {/* Background Grid */}
       <div 
-        className="absolute inset-0 opacity-20" 
+        className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" 
         style={{ 
-          backgroundImage: `linear-gradient(var(--border-subtle) 1px, transparent 1px), linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px)`, 
+          backgroundImage: `linear-gradient(var(--text-primary) 1px, transparent 1px), linear-gradient(90deg, var(--text-primary) 1px, transparent 1px)`, 
           backgroundSize: '40px 40px' 
         }}
       />
@@ -45,9 +45,9 @@ export function AnimatedAuthBackground({ title, subtitle }: { title: string, sub
               className="absolute -inset-4 rounded-full border-2"
               style={{ borderColor: pin.color }}
               initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: [0.5, 2], opacity: [0.5, 0] }}
+              animate={{ scale: [0.5, 2], opacity: [0.4, 0] }}
               transition={{
-                duration: 2,
+                duration: 2.5,
                 repeat: Infinity,
                 delay: pin.delay,
                 ease: "easeOut"
@@ -55,7 +55,7 @@ export function AnimatedAuthBackground({ title, subtitle }: { title: string, sub
             />
             {/* Core dot */}
             <motion.div
-              className="h-3 w-3 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"
+              className="h-2.5 w-2.5 rounded-full shadow-[0_0_12px_rgba(0,0,0,0.3)]"
               style={{ backgroundColor: pin.color }}
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -67,36 +67,36 @@ export function AnimatedAuthBackground({ title, subtitle }: { title: string, sub
               }}
             />
             
-            {/* Floating Info Tag (Optional) */}
+            {/* Floating Info Tag — Glass Style */}
             <motion.div
-              className="absolute top-4 left-4 whitespace-nowrap bg-bg-elevated border border-border-strong px-2 py-1 rounded text-[10px] font-mono text-text-secondary pointer-events-none"
+              className="absolute top-4 left-4 whitespace-nowrap bg-[var(--glass-bg)] backdrop-blur-md border border-[var(--glass-border)] px-2 py-1.5 rounded-[var(--radius-sm)] text-[10px] font-mono text-[var(--text-secondary)] pointer-events-none shadow-[var(--shadow-sm)]"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: [0, 1, 1, 0], y: [10, 0, 0, -10] }}
               transition={{
-                duration: 4,
+                duration: 5,
                 repeat: Infinity,
                 delay: pin.delay + 1,
                 times: [0, 0.1, 0.9, 1]
               }}
             >
-              SITE_ID: {Math.floor(1000 + Math.random() * 9000)}
+              <span className="text-[var(--text-muted)]">SITE_ID:</span> {Math.floor(1000 + Math.random() * 9000)}
               <br />
-              STATUS: {pin.color.includes('critical') ? 'OUTAGE' : 'ACTIVE'}
+              <span className="text-[var(--text-muted)]">STATUS:</span> {pin.color.includes('critical') ? 'OUTAGE' : 'ACTIVE'}
             </motion.div>
           </div>
         ))}
       </div>
 
       {/* Connection Lines (SVG) */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-20">
+      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.15]">
         <motion.path
           d="M 20% 30% L 55% 45% L 70% 20%"
           stroke="var(--accent)"
-          strokeWidth="1"
+          strokeWidth="1.5"
           fill="none"
           initial={{ pathLength: 0 }}
           animate={{ pathLength: 1 }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
         />
         <motion.path
           d="M 15% 80% L 40% 60% L 55% 45% L 80% 75%"
@@ -106,27 +106,30 @@ export function AnimatedAuthBackground({ title, subtitle }: { title: string, sub
           fill="none"
           initial={{ pathLength: 0 }}
           animate={{ pathLength: 1 }}
-          transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
+          transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
         />
       </svg>
 
+      {/* Text Content — Top Right, Refined Geist Typography */}
       <motion.div 
         className="absolute top-12 right-12 z-10 text-right"
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.8 }}
+        initial={{ opacity: 0, x: 20, filter: 'blur(8px)' }}
+        animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
       >
-        <h2 className="text-xl font-bold text-text-primary mb-2 tracking-widest uppercase">{title}</h2>
-        <p className="text-xs text-text-secondary max-w-xs ml-auto leading-relaxed">
+        <h2 className="text-[20px] font-semibold text-[var(--text-primary)] mb-2 tracking-[0.2em] uppercase font-sans">
+          {title}
+        </h2>
+        <p className="text-[12px] text-[var(--text-secondary)] max-w-xs ml-auto leading-[1.6] font-sans">
           {subtitle}
         </p>
       </motion.div>
 
-      {/* Scanning Line Effect */}
+      {/* Scanning Line Effect — Refined */}
       <motion.div 
-        className="absolute left-0 right-0 h-px bg-accent/30 z-0"
+        className="absolute left-0 right-0 h-[1px] bg-[var(--accent)] opacity-[0.1] z-0"
         animate={{ top: ["0%", "100%"] }}
-        transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
       />
     </div>
   )

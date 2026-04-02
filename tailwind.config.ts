@@ -1,29 +1,26 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
+  darkMode: 'class',
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Geist', 'system-ui', 'sans-serif'],
+        mono: ['Geist Mono', 'Fira Code', 'monospace'],
+      },
       colors: {
         bg: {
-          primary:  'var(--bg-primary)',
-          surface:  'var(--bg-surface)',
-          elevated: 'var(--bg-elevated)',
-          hover:    'var(--bg-hover)',
-        },
-        border: {
-          subtle: 'var(--border-subtle)',
-          strong: 'var(--border-strong)',
-        },
-        text: {
-          primary:   'var(--text-primary)',
-          secondary: 'var(--text-secondary)',
-          muted:     'var(--text-muted)',
+          base:    'var(--bg-base)',
+          surface: 'var(--bg-surface)',
+          overlay: 'var(--bg-overlay)',
+          subtle:  'var(--bg-subtle)',
+          muted:   'var(--bg-muted)',
         },
         accent: {
           DEFAULT: 'var(--accent)',
-          hover:   'var(--accent-hover)',
-          subtle:  'var(--accent-subtle)',
+          bright:  'var(--accent-bright)',
+          dim:     'var(--accent-dim)',
         },
         alarm: {
           critical: 'var(--alarm-critical)',
@@ -39,10 +36,28 @@ const config: Config = {
           '2g':  'var(--tech-2g)',
           'b2b': 'var(--tech-b2b)',
         },
+        border: {
+          DEFAULT: 'var(--border)',
+          strong:  'var(--border-strong)',
+          accent:  'var(--border-accent)',
+        },
+        text: {
+          primary:   'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted:     'var(--text-muted)',
+        },
       },
-      fontFamily: {
-        sans: ['IBM Plex Sans', 'sans-serif'],
-        mono: ['IBM Plex Mono', 'monospace'],
+      borderRadius: {
+        sm:   'var(--radius-sm)',
+        md:   'var(--radius-md)',
+        lg:   'var(--radius-lg)',
+        xl:   'var(--radius-xl)',
+      },
+      boxShadow: {
+        sm:   'var(--shadow-sm)',
+        md:   'var(--shadow-md)',
+        lg:   'var(--shadow-lg)',
+        glow: 'var(--shadow-glow)',
       },
     },
   },

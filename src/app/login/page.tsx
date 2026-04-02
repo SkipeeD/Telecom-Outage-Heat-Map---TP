@@ -3,56 +3,15 @@ import { LoginForm } from "@/components/login-form"
 import { AnimatedAuthBackground } from "@/components/animated-auth-background"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const router = useRouter()
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-
-    if (!email || !password) {
-      setError('Please fill in all fields.')
-      return
-    }
-
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      setError('Please enter a valid email address.')
-      return
-    }
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long.')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
-      await userCredential.user.reload()
-      if (!userCredential.user.emailVerified) {
-        router.push('/verify-email')
-        return
-      }
-      router.push('/map')
-    } catch (err: any) {
-      setError(err.message || 'Failed to login. Please check your credentials.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
-    <div className="grid min-h-svh lg:grid-cols-2 bg-bg-primary">
-      <div className="flex flex-col gap-4 p-6 md:p-10 border-r border-border-subtle">
+    <div className="grid min-h-svh lg:grid-cols-2 bg-[var(--bg-base)] transition-colors duration-300">
+      <div className="flex flex-col gap-4 p-6 md:p-10 border-r border-[var(--border)]">
         <div className="flex justify-center gap-2 md:justify-start">
-          <a href="/" className="flex items-center gap-2 font-medium text-text-primary">
-            <div className="flex size-8 items-center justify-center rounded-md bg-accent text-white">
+          <a href="/" className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
+            <div className="flex size-8 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent)] text-white shadow-[var(--shadow-glow)]">
               <SignalHigh className="size-5" />
             </div>
-            <span className="font-semibold tracking-tight uppercase text-lg">SIGNALIS</span>
+            <span className="font-semibold tracking-[0.2em] uppercase text-[14px]">SIGNALIS</span>
           </a>
         </div>
         <div className="flex flex-1 items-center justify-center">
@@ -61,7 +20,7 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
-      <div className="hidden lg:block">
+      <div className="hidden lg:block border-l border-[var(--border)]">
         <AnimatedAuthBackground 
           title="Outage Monitoring System" 
           subtitle="Real-time heat map and analytics for telecom infrastructure and network availability."
