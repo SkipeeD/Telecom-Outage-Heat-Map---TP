@@ -8,14 +8,19 @@ export function middleware(request: NextRequest) {
   const publicRoutes = ['/login', '/register']
   const isPublicRoute = publicRoutes.includes(pathname)
 
+  // Allow verify-email for everyone
+  if (pathname === '/verify-email') {
+    return NextResponse.next()
+  }
+
   // If no auth cookie and not on a public route, redirect to login
   if (!authSession && !isPublicRoute) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // If auth cookie exists and on a public route, redirect to home
+  // If auth cookie exists and on a public route, redirect to map
   if (authSession && isPublicRoute) {
-    return NextResponse.redirect(new URL('/', request.url))
+    return NextResponse.redirect(new URL('/map', request.url))
   }
 
   return NextResponse.next()

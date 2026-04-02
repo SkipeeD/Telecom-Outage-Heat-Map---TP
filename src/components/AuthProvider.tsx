@@ -28,8 +28,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(user)
       setLoading(false)
 
-      // Sync auth state with a cookie for middleware (optional but good)
-      if (user) {
+      // Only set the session cookie for verified users
+      if (user && user.emailVerified) {
         document.cookie = `auth-session=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
       } else {
         document.cookie = 'auth-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!user && !isPublicRoute) {
         router.push('/login')
-      } else if (user && isPublicRoute) {
+      } else if (user && user.emailVerified && isPublicRoute) {
         router.push('/')
       }
     })

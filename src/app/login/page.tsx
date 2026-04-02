@@ -3,6 +3,47 @@ import { LoginForm } from "@/components/login-form"
 import { AnimatedAuthBackground } from "@/components/animated-auth-background"
 
 export default function LoginPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+
+    if (!email || !password) {
+      setError('Please fill in all fields.')
+      return
+    }
+
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setError('Please enter a valid email address.')
+      return
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      await userCredential.user.reload()
+      if (!userCredential.user.emailVerified) {
+        router.push('/verify-email')
+        return
+      }
+      router.push('/map')
+    } catch (err: any) {
+      setError(err.message || 'Failed to login. Please check your credentials.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="grid min-h-svh lg:grid-cols-2 bg-bg-primary">
       <div className="flex flex-col gap-4 p-6 md:p-10 border-r border-border-subtle">
