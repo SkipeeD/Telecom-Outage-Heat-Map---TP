@@ -78,8 +78,9 @@ export function SignupForm({
 
       await sendEmailVerification(user)
       router.push('/verify-email')
-    } catch (err: any) {
-      setError(err.message || 'Failed to register account.')
+    } catch (err) {
+      const error = err as Error
+      setError(error.message || 'Failed to register account.')
     } finally {
       setLoading(false)
     }
