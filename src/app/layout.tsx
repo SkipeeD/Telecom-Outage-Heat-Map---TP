@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: "Telecom Outage Heat Map",
-  description: "Professional NOC Dashboard",
+  title: "SIGNALIS | Outage Heat Map",
+  description: "Professional Telecom NOC Dashboard",
 };
 
 export default function RootLayout({
