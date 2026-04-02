@@ -26,8 +26,8 @@ export default function Navbar() {
   return (
     <header className="h-12 flex-shrink-0 flex items-center justify-between px-4 border-b border-border-subtle bg-bg-surface">
       <div className="flex items-center gap-4">
-        <h1 className="text-sm font-semibold uppercase tracking-wider text-text-primary">
-          Telecom Outage Heat Map
+        <h1 className="text-sm font-bold uppercase tracking-widest text-text-primary">
+          SIGNALIS
         </h1>
 
         {/* Live Status Indicator */}
