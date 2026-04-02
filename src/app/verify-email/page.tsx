@@ -18,6 +18,7 @@ export default function VerifyEmailPage() {
         await user.reload()
         if (auth.currentUser?.emailVerified) {
           clearInterval(interval)
+          document.cookie = `auth-session=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
           router.push('/map')
         }
       }, 3000)
