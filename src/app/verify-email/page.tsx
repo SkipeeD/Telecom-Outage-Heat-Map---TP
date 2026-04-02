@@ -6,7 +6,6 @@ import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { SignalHigh, MailCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import Link from 'next/link'
 
 export default function VerifyEmailPage() {
   const router = useRouter()
@@ -64,9 +63,9 @@ export default function VerifyEmailPage() {
             <Button
               variant="outline"
               className="w-full bg-[var(--glass-bg)] hover:bg-[var(--glass-hover)] border-[var(--glass-border)] hover:border-[var(--border-strong)] text-[var(--text-primary)] text-[13px] rounded-[var(--radius-md)] uppercase tracking-widest"
-              asChild
+              onClick={() => router.push('/login')}
             >
-              <Link href="/login">Back to Sign In</Link>
+              Back to Sign In
             </Button>
           </div>
         </div>
