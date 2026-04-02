@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "shadcn": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@jpisnice/shadcn-ui-mcp-server"
+      ]
+    },
+    "mui": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@mui/mcp@latest"
+      ]
+    }
+  }
+}
