@@ -8,7 +8,7 @@ export interface MapProps {
   onAntennaClick: (antenna: Antenna) => void
 }
 
-const MapWithNoSSR = dynamic(() => import('./MapClient'), {
+const MapWithNoSSR = dynamic(() => import('../../components/MapClient'), {
   ssr: false,
   loading: () => (
     <div

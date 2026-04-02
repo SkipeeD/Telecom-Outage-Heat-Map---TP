@@ -1,6 +1,7 @@
 'use client'
 
-import { CircleMarker } from 'react-leaflet'
+import { useState } from 'react'
+import { CircleMarker, Tooltip } from 'react-leaflet'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
 
 export function getMarkerColor(
@@ -33,25 +34,36 @@ interface MarkerLayerProps {
 }
 
 export function MarkerLayer({ antennas, onAntennaClick }: MarkerLayerProps) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
+
   return (
     <>
       {antennas.map((antenna) => {
         const { fill, stroke } = getMarkerColor(antenna.technology, antenna.status)
+        const isHovered = hoveredId === antenna.id
         return (
           <CircleMarker
             key={antenna.id}
             center={[antenna.latitude, antenna.longitude]}
-            radius={8}
+            radius={isHovered ? 12 : 8}
             pathOptions={{
               fillColor:   fill,
-              fillOpacity: 0.85,
+              fillOpacity: isHovered ? 1 : 0.85,
               color:       stroke,
-              weight:      2,
+              weight:      isHovered ? 3 : 2,
             }}
             eventHandlers={{
-              click: () => onAntennaClick(antenna),
+              click:     () => onAntennaClick(antenna),
+              mouseover: () => setHoveredId(antenna.id),
+              mouseout:  () => setHoveredId(null),
             }}
-          />
+          >
+            <Tooltip className="marker-tooltip" sticky>
+              <span className="tooltip-site-id">{antenna.siteId}</span>
+              <span className="tooltip-name">{antenna.name}</span>
+              <span className="tooltip-meta">{antenna.technology} · {antenna.status.toUpperCase()}</span>
+            </Tooltip>
+          </CircleMarker>
         )
       })}
     </>
