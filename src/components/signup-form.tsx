@@ -30,7 +30,7 @@ const itemVariants = {
   hidden: { opacity: 0, y: 12, filter: 'blur(4px)' },
   visible: { 
     opacity: 1, y: 0, filter: 'blur(0px)',
-    transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] }
+    transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] as [number, number, number, number] }
   }
 }
 
@@ -78,8 +78,9 @@ export function SignupForm({
 
       await sendEmailVerification(user)
       router.push('/verify-email')
-    } catch (err: any) {
-      setError(err.message || 'Failed to register account.')
+    } catch (err) {
+      const error = err as Error
+      setError(error.message || 'Failed to register account.')
     } finally {
       setLoading(false)
     }
