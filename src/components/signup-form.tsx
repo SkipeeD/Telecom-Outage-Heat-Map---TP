@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth, db } from '@/lib/firebase'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -76,7 +76,8 @@ export function SignupForm({
         role: 'engineer',
       })
 
-      router.push('/')
+      await sendEmailVerification(user)
+      router.push('/verify-email')
     } catch (err: any) {
       setError(err.message || 'Failed to register account.')
     } finally {
