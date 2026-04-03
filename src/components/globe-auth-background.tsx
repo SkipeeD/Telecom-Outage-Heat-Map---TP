@@ -2,13 +2,53 @@
 
 import { motion } from "motion/react"
 import { useEffect, useState } from "react"
-import { GlobePulse } from "@/components/ui/cobe-globe-pulse"
+import { GlobePulse, type PulseMarker } from "@/components/ui/cobe-globe-pulse"
+import type { AlarmSeverity } from "@/types"
+
+const LOCATIONS: [number, number][] = [
+  [51.51,  -0.13],   // London
+  [40.71,  -74.01],  // New York
+  [35.68,  139.65],  // Tokyo
+  [-33.87, 151.21],  // Sydney
+  [1.35,   103.82],  // Singapore
+  [-23.55, -46.63],  // São Paulo
+  [28.61,  77.21],   // Delhi
+  [30.06,  31.25],   // Cairo
+  [52.52,  13.40],   // Berlin
+  [6.52,   3.38],    // Lagos
+  [19.43,  -99.13],  // Mexico City
+  [55.75,  37.62],   // Moscow
+]
+
+// Weighted random status — mostly ok/warning, occasional critical
+const STATUSES: AlarmSeverity[] = [
+  "ok", "ok", "ok", "ok",
+  "warning", "warning",
+  "minor",
+  "major",
+  "critical",
+]
+
+function randomStatus(): AlarmSeverity {
+  return STATUSES[Math.floor(Math.random() * STATUSES.length)]
+}
+
+function buildMarkers(): PulseMarker[] {
+  return LOCATIONS.map((location, i) => ({
+    id:       `globe-${i}`,
+    location,
+    delay:    i * 0.35,
+    status:   randomStatus(),
+  }))
+}
 
 export function GlobeAuthBackground({ title, subtitle }: { title: string; subtitle: string }) {
   const [mounted, setMounted] = useState(false)
+  const [markers, setMarkers] = useState<PulseMarker[]>([])
 
   useEffect(() => {
     setMounted(true)
+    setMarkers(buildMarkers())
   }, [])
 
   if (!mounted) return null
@@ -37,7 +77,7 @@ export function GlobeAuthBackground({ title, subtitle }: { title: string; subtit
         animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
         transition={{ duration: 1.2, ease: [0.4, 0, 0.2, 1] }}
       >
-        <GlobePulse />
+        <GlobePulse markers={markers} />
       </motion.div>
 
       {/* Text — Top Right */}
