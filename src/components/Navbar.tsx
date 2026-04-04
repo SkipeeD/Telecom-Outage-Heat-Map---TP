@@ -1,4 +1,4 @@
-'use client'
+ 'use client'
 
 import { useAuth } from './AuthProvider'
 import { auth } from '@/lib/firebase'
