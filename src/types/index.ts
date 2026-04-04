@@ -6,6 +6,7 @@ export interface Alarm {
   id: string
   antennaId: string
   siteId: string
+  technology: Technology
   alarmNumber: number
   severity: AlarmSeverity
   /** Alarm description text — maps to xlsx TEXT column */
@@ -15,6 +16,12 @@ export interface Alarm {
   alarmTime: string
   cancelTime: string | null
   resolved: boolean
+}
+
+export interface Cell {
+  technology: Technology
+  status: AlarmSeverity
+  currentAlarm?: Alarm
 }
 
 export interface Incident {
@@ -36,11 +43,9 @@ export interface Antenna {
   name: string
   siteId: string
   provider: string
-  technology: Technology
   latitude: number
   longitude: number
-  status: AlarmSeverity
-  currentAlarm?: Alarm
+  cells: Cell[]
 }
 
 export interface UserProfile {

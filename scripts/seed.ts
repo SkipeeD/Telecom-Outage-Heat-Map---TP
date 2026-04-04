@@ -10,12 +10,7 @@ import type { Technology, AlarmSeverity } from '../src/types'
 
 if (getApps().length === 0) {
   initializeApp({
-    credential: cert({
-      projectId:    process.env.FIREBASE_ADMIN_PROJECT_ID,
-      clientEmail:  process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-      // .env.local stores the private key with literal \n — replace them
-      privateKey:   process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
+    credential: cert(resolve(process.cwd(), 'service-account.json')),
   })
 }
 
@@ -79,13 +74,28 @@ const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7'
 
 const PROVIDERS: string[] = ['Vodafone RO', 'Orange RO', 'Digi RO', 'Telekom RO']
 
-const TECH_SLOTS: Technology[] = [
-  '5G', '5G', '5G', '5G',
-  '4G', '4G', '4G', '4G', '4G', '4G',
-  '3G', '3G', '3G',
-  '2G', '2G',
-  'B2B', 'B2B',
-  '4G', '5G', '3G',
+// Each entry is the set of cell technologies present at that antenna slot
+const CELL_BUNDLES: Technology[][] = [
+  ['2G', '3G', '4G', '5G'],   // Full modern stack
+  ['2G', '3G', '4G', '5G'],
+  ['2G', '3G', '4G', '5G'],
+  ['2G', '3G', '4G', '5G'],
+  ['3G', '4G', '5G'],          // No legacy 2G
+  ['3G', '4G', '5G'],
+  ['3G', '4G', '5G'],
+  ['3G', '4G', '5G'],
+  ['2G', '3G', '4G'],          // No 5G rollout yet
+  ['2G', '3G', '4G'],
+  ['2G', '3G', '4G'],
+  ['2G', '3G', '4G'],
+  ['4G', '5G'],                // Compact modern site
+  ['4G', '5G'],
+  ['4G', '5G'],
+  ['B2B'],                     // Dedicated B2B site
+  ['B2B'],
+  ['2G', '4G', '5G'],          // 3G decommissioned
+  ['3G', '4G'],                // Mid-tier site
+  ['2G', '3G', '4G', '5G'],
 ]
 
 // 20 neighbourhood area names for all cities
@@ -177,73 +187,82 @@ async function seed() {
       const siteId   = `${city.code}${num}`           // e.g. T1000, B1000 — matches xlsx style
       const id       = siteId.toLowerCase()            // Firestore doc ID — e.g. t1000
       const provider = PROVIDERS[i % PROVIDERS.length]
-      const tech     = TECH_SLOTS[i]
-      const status   = STATUS_SLOTS[i]
       const area     = AREAS[i]
+      const bundle   = CELL_BUNDLES[i]
 
       const latOffset = LAT_OFFSETS[Math.floor(i / 5)]
       const lonOffset = LON_OFFSETS[i % 4]
 
       const antennaRef = db.collection('topology').doc(id)
 
-      let currentAlarm: object | undefined = undefined
+      // Build cells — each cell gets its own deterministic status
+      const cells: object[] = []
 
-      if (status !== 'ok') {
-        const template  = pickAlarm(status, i)
-        const alarmId   = `${id}-alarm-active`
-        const alarmRef  = db.collection('alarms').doc(alarmId)
+      for (let ci2 = 0; ci2 < bundle.length; ci2++) {
+        const tech   = bundle[ci2]
+        const status = STATUS_SLOTS[(ci * 20 + i + ci2 * 7) % STATUS_SLOTS.length]
 
-        // ALARM_TIME: within the last 48 hours, deterministic offset per slot
-        const alarmTime   = new Date(Date.now() - 1000 * 60 * (30 + i * 17)).toISOString()
-        // CANCEL_TIME: only for resolved alarms (none are resolved in active seed — all active)
-        const cancelTime  = null
-        const alarmStatus = 1  // 1 = active, matches xlsx ALARM_STATUS
+        let currentAlarm: object | undefined = undefined
 
-        const alarm = {
-          antennaId:   id,
-          siteId,
-          alarmNumber: template.alarmNumber,
-          severity:    status,
-          text:        template.text,            // matches xlsx TEXT column
-          alarmStatus,                           // matches xlsx ALARM_STATUS (0=cancelled, 1=active)
-          alarmTime,
-          cancelTime,
-          resolved: false,
+        if (status !== 'ok') {
+          const template  = pickAlarm(status, i + ci2)
+          const alarmId   = `${id}-${tech.toLowerCase()}-alarm-active`
+          const alarmRef  = db.collection('alarms').doc(alarmId)
+
+          const alarmTime  = new Date(Date.now() - 1000 * 60 * (30 + i * 17 + ci2 * 11)).toISOString()
+          const alarmStatus = 1
+
+          const alarm = {
+            antennaId:   id,
+            siteId,
+            technology:  tech,
+            alarmNumber: template.alarmNumber,
+            severity:    status,
+            text:        template.text,
+            alarmStatus,
+            alarmTime,
+            cancelTime:  null,
+            resolved:    false,
+          }
+
+          alarmBatch.set(alarmRef, alarm)
+          currentAlarm = { id: alarmId, ...alarm }
+
+          // Linked incident
+          const incidentId     = nextIncidentId()
+          const incidentRef    = db.collection('incidents').doc(incidentId)
+          const incidentStatus = status === 'critical' ? 'IN PROGRESS' : 'ASSIGNED'
+          const assignee       = ASSIGNEES[(ci + i + ci2) % ASSIGNEES.length]
+
+          incidentBatch.set(incidentRef, {
+            incidentNumber: incidentId,
+            submitDate:     alarmTime,
+            alarmId:        alarmId,
+            siteId,
+            status:         incidentStatus,
+            urgency:        toUrgency(status),
+            impact:         status === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
+            priority:       toPriority(status),
+            closedDate:     null,
+            assignee,
+            resolvedDate:   null,
+          })
         }
 
-        alarmBatch.set(alarmRef, alarm)
-        currentAlarm = { id: alarmId, ...alarm }
-
-        // Seed a linked incident — matches xlsx Incidents sheet structure
-        const incidentId    = nextIncidentId()
-        const incidentRef   = db.collection('incidents').doc(incidentId)
-        const incidentStatus = status === 'critical' ? 'IN PROGRESS' : 'ASSIGNED'
-        const assignee      = ASSIGNEES[(ci + i) % ASSIGNEES.length]
-
-        incidentBatch.set(incidentRef, {
-          incidentNumber: incidentId,              // INC0000001 format
-          submitDate:     alarmTime,
-          alarmId:        alarmId,
-          siteId,
-          status:         incidentStatus,
-          urgency:        toUrgency(status),
-          impact:         status === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
-          priority:       toPriority(status),
-          closedDate:     null,
-          assignee,
-          resolvedDate:   null,
+        cells.push({
+          technology: tech,
+          status,
+          ...(currentAlarm ? { currentAlarm } : {}),
         })
       }
 
       topologyBatch.set(antennaRef, {
         name:      `${city.name} ${area}`,
-        siteId,                                  // e.g. T1000 — letter + 4 digits
+        siteId,
         provider,
-        technology: tech,
         latitude:   Math.round((city.lat + latOffset) * 1e6) / 1e6,
         longitude:  Math.round((city.lon + lonOffset) * 1e6) / 1e6,
-        status,
-        ...(currentAlarm ? { currentAlarm } : {}),
+        cells,
       })
     }
   }

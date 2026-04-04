@@ -1,7 +1,15 @@
 'use client'
 
 import { CircleMarker } from 'react-leaflet'
-import type { Antenna, Technology, AlarmSeverity } from '@/types'
+import type { Antenna, Cell, Technology, AlarmSeverity } from '@/types'
+
+const SEVERITY_ORDER: AlarmSeverity[] = ['critical', 'major', 'minor', 'warning', 'ok']
+
+export function worstCell(cells: Cell[]): Cell {
+  return cells.reduce((worst, cell) =>
+    SEVERITY_ORDER.indexOf(cell.status) < SEVERITY_ORDER.indexOf(worst.status) ? cell : worst
+  , cells[0])
+}
 
 export function getMarkerColor(
   tech: Technology,
@@ -36,7 +44,8 @@ export function MarkerLayer({ antennas, onAntennaClick }: MarkerLayerProps) {
   return (
     <>
       {antennas.map((antenna) => {
-        const { fill, stroke } = getMarkerColor(antenna.technology, antenna.status)
+        const worst = worstCell(antenna.cells)
+        const { fill, stroke } = getMarkerColor(worst.technology, worst.status)
         return (
           <CircleMarker
             key={antenna.id}
