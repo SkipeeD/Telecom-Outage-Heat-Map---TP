@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth, db } from '@/lib/firebase'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -30,7 +30,7 @@ const itemVariants = {
   hidden: { opacity: 0, y: 12, filter: 'blur(4px)' },
   visible: { 
     opacity: 1, y: 0, filter: 'blur(0px)',
-    transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] }
+    transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] as [number, number, number, number] }
   }
 }
 
@@ -76,9 +76,11 @@ export function SignupForm({
         role: 'engineer',
       })
 
-      router.push('/')
-    } catch (err: any) {
-      setError(err.message || 'Failed to register account.')
+      await sendEmailVerification(user)
+      router.push('/verify-email')
+    } catch (err) {
+      const error = err as Error
+      setError(error.message || 'Failed to register account.')
     } finally {
       setLoading(false)
     }

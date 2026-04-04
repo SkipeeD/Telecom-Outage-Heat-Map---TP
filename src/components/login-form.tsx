@@ -29,7 +29,7 @@ const itemVariants = {
   hidden: { opacity: 0, y: 12, filter: 'blur(4px)' },
   visible: { 
     opacity: 1, y: 0, filter: 'blur(0px)',
-    transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] }
+    transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] as [number, number, number, number] }
   }
 }
 
@@ -54,10 +54,16 @@ export function LoginForm({
 
     setLoading(true)
     try {
-      await signInWithEmailAndPassword(auth, email, password)
-      router.push('/')
-    } catch (err: any) {
-      setError(err.message || 'Failed to login. Please check your credentials.')
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      await userCredential.user.reload()
+      if (!userCredential.user.emailVerified) {
+        router.push('/verify-email')
+        return
+      }
+      router.push('/map')
+    } catch (err) {
+      const error = err as Error
+      setError(error.message || 'Failed to login. Please check your credentials.')
     } finally {
       setLoading(false)
     }
