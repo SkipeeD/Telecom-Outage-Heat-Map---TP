@@ -3,11 +3,12 @@
 import { useAuth } from './AuthProvider'
 import { auth } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
-import { usePathname } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 
 export default function Navbar() {
   const { user } = useAuth()
   const pathname = usePathname()
+  const router = useRouter()
 
   const isAuthPage = pathname === '/login' || pathname === '/register'
 
@@ -18,6 +19,7 @@ export default function Navbar() {
   const handleSignOut = async () => {
     try {
       await signOut(auth)
+      router.push('/login')
     } catch (error) {
       console.error('Error signing out:', error)
     }
