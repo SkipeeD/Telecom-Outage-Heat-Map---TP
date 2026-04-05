@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Antenna } from '@/types'
+import type { Antenna, Technology, AlarmSeverity } from '@/types'
 import { MarkerLayer } from './MarkerLayer'
 
 function ResizeHandler() {
