@@ -222,3 +222,13 @@ html, body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Fix for Leaflet white grid lines between tiles */
+.leaflet-tile {
+  outline: 1px solid transparent;
+}
+
+.leaflet-container img.leaflet-tile {
+  /* Some browsers need this to prevent tiny gaps */
+  box-shadow: 0 0 1px transparent;
+}
