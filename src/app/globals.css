@@ -224,6 +224,10 @@ html, body {
 }
 
 /* Fix for Leaflet white grid lines between tiles */
+.leaflet-container {
+  background: #1a1a2e !important;
+}
+
 .leaflet-tile {
   outline: 1px solid transparent;
 }
