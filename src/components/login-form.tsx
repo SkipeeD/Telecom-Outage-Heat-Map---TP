@@ -9,10 +9,10 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldError,
+  FieldDescription,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
@@ -61,7 +61,7 @@ export function LoginForm({
         router.push('/verify-email')
         return
       }
-      router.push('/map')
+      // Let AuthProvider handle the redirect to /map once profile is ready
     } catch (err) {
       const error = err as Error
       setError(error.message || 'Failed to login. Please check your credentials.')
@@ -75,7 +75,7 @@ export function LoginForm({
     setLoading(true)
     try {
       await signInWithPopup(auth, googleProvider)
-      router.push('/map')
+      // Let AuthProvider handle the redirect to /map once profile is ready
     } catch (err) {
       const error = err as Error
       setError(error.message || 'Failed to login with Google.')
