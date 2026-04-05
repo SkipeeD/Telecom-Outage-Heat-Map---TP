@@ -107,26 +107,8 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClic
         const matchesSeverity = !activeFilters?.severities?.length || activeFilters.severities.includes(marker.worstStatus)
         const matchesFilter = matchesTech && matchesSeverity
 
-        // Non-matching (filtered) antennas render as 5px gray dot
-        if (!matchesFilter) {
-          return (
-            <CircleMarker
-              key={`${marker.id}-filtered-${theme}`}
-              center={[marker.latitude, marker.longitude]}
-              radius={5}
-              pathOptions={{
-                fillColor: '#9ca3af',
-                fillOpacity: 0.5,
-                color: '#6b7280',
-                weight: 1,
-                opacity: 0.5
-              }}
-              eventHandlers={{
-                click: () => onAntennaClick(marker)
-              }}
-            />
-          )
-        }
+        // Non-matching (filtered) antennas are hidden
+        if (!matchesFilter) return null
 
         const { fill, stroke } = marker.colors
         

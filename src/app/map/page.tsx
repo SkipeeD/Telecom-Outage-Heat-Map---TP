@@ -7,7 +7,6 @@ import { subscribeToAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useFilters, FilterSeverity } from '@/components/FilterProvider'
 import type { Antenna, AlarmSeverity } from '@/types'
-import { CellsDown } from '@/components/CellsDown'
 
 const MapClient = dynamic(() => import('@/app/map/Map'), { 
   ssr: false,
@@ -90,33 +89,6 @@ export default function MapPage() {
           onAntennaClick={handleAntennaClick} 
         />
       </div>
-
-      {/* Sidebar - Fixed Order per DESIGN_SYSTEM.md */}
-      <motion.aside
-        initial={{ x: 20, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-        className="
-          w-[380px] flex-shrink-0
-          border-l border-[var(--glass-border)]
-          bg-[var(--glass-bg)] backdrop-blur-2xl
-          overflow-y-auto flex flex-col gap-3 p-4
-        "
-      >
-        <CellsDown 
-          antennas={antennas} 
-          selectedId={selectedId}
-          onSelect={handleAntennaClick}
-        />
-        
-        {/* Placeholder for future widgets */}
-        <div className="mt-auto pt-4 border-t border-[var(--glass-border)] text-center">
-          <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">
-            NOC Monitoring System v2.1
-          </span>
-        </div>
-      </motion.aside>
-
     </div>
   )
 }
