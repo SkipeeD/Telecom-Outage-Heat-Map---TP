@@ -31,13 +31,15 @@ export default function MapClient({ antennas, selectedId, activeFilters, onAnten
     <MapContainer
       center={[45.9, 24.9]}
       zoom={7}
-      style={{ width: '100%', height: '100%' }}
+      style={{ width: '100%', height: '100%', background: '#1a1a2e' }}
     >
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         subdomains="abcd"
         maxZoom={20}
+        keepBuffer={6}
+        updateWhenIdle={false}
       />
       <MarkerLayer 
         antennas={antennas} 
