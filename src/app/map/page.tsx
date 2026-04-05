@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import { motion } from 'motion/react'
 import { subscribeToAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
-import type { Antenna, Technology, AlarmSeverity } from '@/types'
+import { useFilters, FilterSeverity } from '@/components/FilterProvider'
+import type { Antenna, AlarmSeverity } from '@/types'
+import { CellsDown } from '@/components/CellsDown'
 
 const MapClient = dynamic(() => import('@/app/map/Map'), { 
   ssr: false,
@@ -17,42 +20,103 @@ const MapClient = dynamic(() => import('@/app/map/Map'), {
   )
 })
 
+const severityRank: Record<AlarmSeverity, number> = {
+  critical: 5,
+  major: 4,
+  minor: 3,
+  warning: 2,
+  ok: 1,
+}
+
+function getWorstStatus(antenna: Antenna): AlarmSeverity {
+  if (!antenna.cells || antenna.cells.length === 0) return 'ok'
+  return antenna.cells.reduce((prev, curr) => 
+    severityRank[curr.status] > severityRank[prev.status] ? curr : prev
+  ).status
+}
+
 export default function MapPage() {
   const { user, loading: authLoading } = useAuth()
+  const { selectedSeverity, setCounts } = useFilters()
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [filters] = useState<{ technologies: Technology[], severities: AlarmSeverity[] }>({
-    technologies: [],
-    severities: [],
-  })
 
   useEffect(() => {
-    // Only subscribe to antennas in Firestore if the user is authenticated
     if (!user) return
 
     const unsubscribe = subscribeToAntennas((data) => {
       setAntennas(data)
+      
+      const newCounts: Record<FilterSeverity, number> = {
+        all: data.length,
+        critical: 0,
+        major: 0,
+        minor: 0,
+        warning: 0,
+        ok: 0
+      }
+      
+      data.forEach(antenna => {
+        const status = getWorstStatus(antenna)
+        if (newCounts[status] !== undefined) {
+          newCounts[status]++
+        }
+      })
+      
+      setCounts(newCounts)
     })
     return () => unsubscribe()
-  }, [user])
+  }, [user, setCounts])
 
   const handleAntennaClick = (antenna: Antenna) => {
     setSelectedId(prev => (prev === antenna.id ? null : antenna.id))
-    console.log('Selected antenna:', antenna)
   }
 
-  // AuthProvider handles the loading state, but we ensure we don't render 
-  // data-dependent components until auth is resolved.
   if (authLoading) return null
 
+  const activeFilters = {
+    severities: selectedSeverity === 'all' ? [] : [selectedSeverity as AlarmSeverity]
+  }
+
   return (
-    <div className="w-full h-screen bg-[var(--bg-base)] overflow-hidden transition-colors duration-300">
-      <MapClient 
-        antennas={antennas} 
-        selectedId={selectedId}
-        activeFilters={filters}
-        onAntennaClick={handleAntennaClick} 
-      />
+    <div className="flex h-screen bg-[var(--bg-base)] overflow-hidden transition-colors duration-300">
+      
+      {/* Map Area */}
+      <div className="flex-1 relative min-w-0">
+        <MapClient 
+          antennas={antennas} 
+          selectedId={selectedId}
+          activeFilters={activeFilters}
+          onAntennaClick={handleAntennaClick} 
+        />
+      </div>
+
+      {/* Sidebar - Fixed Order per DESIGN_SYSTEM.md */}
+      <motion.aside
+        initial={{ x: 20, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+        className="
+          w-[380px] flex-shrink-0
+          border-l border-[var(--glass-border)]
+          bg-[var(--glass-bg)] backdrop-blur-2xl
+          overflow-y-auto flex flex-col gap-3 p-4
+        "
+      >
+        <CellsDown 
+          antennas={antennas} 
+          selectedId={selectedId}
+          onSelect={handleAntennaClick}
+        />
+        
+        {/* Placeholder for future widgets */}
+        <div className="mt-auto pt-4 border-t border-[var(--glass-border)] text-center">
+          <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">
+            NOC Monitoring System v2.1
+          </span>
+        </div>
+      </motion.aside>
+
     </div>
   )
 }
