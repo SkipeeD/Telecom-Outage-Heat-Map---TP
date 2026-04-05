@@ -126,9 +126,6 @@ export function SignupForm({
             <h1 className="text-[20px] font-semibold text-[var(--text-primary)] uppercase tracking-widest">
               Create SIGNALIS Account
             </h1>
-            <p className="text-[13px] text-balance text-[var(--text-secondary)]">
-              Join the engineering team
-            </p>
           </motion.div>
 
           <motion.div variants={itemVariants}>

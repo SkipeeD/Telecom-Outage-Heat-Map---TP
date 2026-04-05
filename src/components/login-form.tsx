@@ -97,9 +97,6 @@ export function LoginForm({
               <h1 className="text-[20px] font-semibold text-[var(--text-primary)] uppercase tracking-widest">
                 Login to SIGNALIS
               </h1>
-              <p className="text-[13px] text-balance text-[var(--text-secondary)]">
-                Enter your credentials to access the dashboard
-              </p>
             </motion.div>
 
             <motion.div variants={itemVariants}>
