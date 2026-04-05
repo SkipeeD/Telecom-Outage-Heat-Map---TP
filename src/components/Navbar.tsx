@@ -1,16 +1,41 @@
- 'use client'
+'use client'
 
 import { useAuth } from './AuthProvider'
 import { auth } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
 import { useRouter, usePathname } from 'next/navigation'
+import { motion } from 'motion/react'
+import { useTheme } from '@/hooks/useTheme'
+import { SignalHigh } from "lucide-react"
+
+export function ThemeToggle() {
+  const { theme, toggle } = useTheme()
+
+  return (
+    <motion.button
+      onClick={toggle}
+      whileTap={{ scale: 0.92 }}
+      className="
+        w-8 h-8 rounded-[var(--radius-md)]
+        bg-[var(--glass-bg)] border border-[var(--glass-border)]
+        flex items-center justify-center
+        text-[var(--text-secondary)] hover:text-[var(--text-primary)]
+        hover:bg-[var(--glass-hover)]
+        transition-colors duration-200
+      "
+      aria-label="Toggle theme"
+    >
+      {theme === 'dark' ? '☀' : '☾'}
+    </motion.button>
+  )
+}
 
 export default function Navbar() {
   const { user } = useAuth()
   const pathname = usePathname()
   const router = useRouter()
 
-  const isAuthPage = pathname === '/login' || pathname === '/register'
+  const isAuthPage = ['/login', '/register', '/verify-email'].includes(pathname)
 
   if (!user || isAuthPage) {
     return null
@@ -26,31 +51,54 @@ export default function Navbar() {
   }
 
   return (
-    <header className="h-12 flex-shrink-0 flex items-center justify-between px-4 border-b border-border-subtle bg-bg-surface">
-      <div className="flex items-center gap-4">
-        <h1 className="text-sm font-bold uppercase tracking-widest text-text-primary">
-          SIGNALIS
-        </h1>
-
-        {/* Live Status Indicator */}
-        <div className="flex items-center gap-2 px-2 py-1 rounded bg-bg-elevated border border-border-subtle">
-          <div className="w-2 h-2 rounded-full bg-alarm-ok animate-pulse" />
-          <span className="text-[10px] font-mono font-medium text-alarm-ok uppercase">
-            System Live
+    <header className="
+      h-14 flex-shrink-0 flex items-center justify-between px-6 
+      border-b border-[var(--glass-border)] 
+      bg-[var(--glass-bg)] backdrop-blur-xl
+      z-50 transition-colors duration-300
+    ">
+      <div className="flex items-center gap-6">
+        <motion.div 
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="flex items-center gap-3"
+        >
+          <div className="flex size-8 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent)] text-white shadow-[var(--shadow-glow)]">
+            <SignalHigh className="size-5" />
+          </div>
+          <span className="font-semibold tracking-[0.2em] uppercase text-[14px] text-[var(--text-primary)]">
+            SIGNALIS
           </span>
-        </div>
+        </motion.div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <span className="text-xs font-mono text-text-secondary">
-          {user.email}
-        </span>
-        <button
+      <div className="flex items-center gap-5">
+        <div className="flex flex-col items-end">
+          <span className="text-[13px] font-medium text-[var(--text-primary)] leading-none">
+            {user.email?.split('@')[0]}
+          </span>
+          <span className="text-[11px] font-mono text-[var(--text-muted)] mt-1 uppercase tracking-tighter">
+            NOC Engineer
+          </span>
+        </div>
+
+        <div className="h-6 w-[1px] bg-[var(--glass-border)] mx-1" />
+
+        <ThemeToggle />
+
+        <motion.button
+          whileTap={{ scale: 0.95 }}
           onClick={handleSignOut}
-          className="text-xs font-medium text-text-secondary hover:text-text-primary transition-colors uppercase tracking-wider"
+          className="
+            text-[11px] font-medium uppercase tracking-widest px-3 py-1.5
+            rounded-[var(--radius-md)] border border-[var(--glass-border)]
+            text-[var(--text-secondary)] hover:text-[var(--text-primary)]
+            hover:bg-[var(--glass-hover)] hover:border-[var(--border-strong)]
+            transition-all duration-200
+          "
         >
           Sign Out
-        </button>
+        </motion.button>
       </div>
     </header>
   )

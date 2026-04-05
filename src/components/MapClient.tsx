@@ -18,10 +18,15 @@ function ResizeHandler() {
 
 interface MapClientProps {
   antennas: Antenna[]
+  selectedId?: string | null
+  activeFilters?: {
+    technologies?: Technology[]
+    severities?: AlarmSeverity[]
+  }
   onAntennaClick: (antenna: Antenna) => void
 }
 
-export default function MapClient({ antennas, onAntennaClick }: MapClientProps) {
+export default function MapClient({ antennas, selectedId, activeFilters, onAntennaClick }: MapClientProps) {
   return (
     <MapContainer
       center={[45.9, 24.9]}
@@ -34,7 +39,12 @@ export default function MapClient({ antennas, onAntennaClick }: MapClientProps) 
         maxZoom={19}
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
-      <MarkerLayer antennas={antennas} onAntennaClick={onAntennaClick} />
+      <MarkerLayer 
+        antennas={antennas} 
+        selectedId={selectedId}
+        activeFilters={activeFilters}
+        onAntennaClick={onAntennaClick} 
+      />
       <ResizeHandler />
     </MapContainer>
   )

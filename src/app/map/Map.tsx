@@ -1,10 +1,15 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import type { Antenna } from '@/types'
+import type { Antenna, Technology, AlarmSeverity } from '@/types'
 
 export interface MapProps {
   antennas: Antenna[]
+  selectedId?: string | null
+  activeFilters?: {
+    technologies?: Technology[]
+    severities?: AlarmSeverity[]
+  }
   onAntennaClick: (antenna: Antenna) => void
 }
 
@@ -12,12 +17,10 @@ const MapWithNoSSR = dynamic(() => import('../../components/MapClient'), {
   ssr: false,
   loading: () => (
     <div
-      className="w-full h-full flex items-center justify-center"
-      style={{ background: 'var(--bg-primary)' }}
+      className="w-full h-full flex items-center justify-center bg-[var(--bg-base)]"
     >
       <span
-        className="text-sm"
-        style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}
+        className="text-[var(--text-muted)] font-mono text-sm animate-pulse"
       >
         Loading map…
       </span>
@@ -25,6 +28,13 @@ const MapWithNoSSR = dynamic(() => import('../../components/MapClient'), {
   ),
 })
 
-export default function Map({ antennas, onAntennaClick }: MapProps) {
-  return <MapWithNoSSR antennas={antennas} onAntennaClick={onAntennaClick} />
+export default function Map({ antennas, selectedId, activeFilters, onAntennaClick }: MapProps) {
+  return (
+    <MapWithNoSSR 
+      antennas={antennas} 
+      selectedId={selectedId}
+      activeFilters={activeFilters}
+      onAntennaClick={onAntennaClick} 
+    />
+  )
 }
