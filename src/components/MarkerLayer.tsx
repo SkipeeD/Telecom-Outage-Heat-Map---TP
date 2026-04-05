@@ -4,6 +4,23 @@ import { useState } from 'react'
 import { CircleMarker, Tooltip } from 'react-leaflet'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
 
+const severityRank: Record<AlarmSeverity, number> = {
+  critical: 5,
+  major: 4,
+  minor: 3,
+  warning: 2,
+  ok: 1,
+}
+
+function worstCell(antenna: Antenna): { technology: Technology; status: AlarmSeverity } {
+  if (!antenna.cells || antenna.cells.length === 0) {
+    return { technology: '4G', status: 'ok' }
+  }
+  return antenna.cells.reduce((best, cell) =>
+    severityRank[cell.status] > severityRank[best.status] ? cell : best
+  )
+}
+
 export function getMarkerColor(
   tech: Technology,
   severity: AlarmSeverity,
@@ -39,7 +56,8 @@ export function MarkerLayer({ antennas, onAntennaClick }: MarkerLayerProps) {
   return (
     <>
       {antennas.map((antenna) => {
-        const { fill, stroke } = getMarkerColor(antenna.technology, antenna.status)
+        const { technology, status } = worstCell(antenna)
+        const { fill, stroke } = getMarkerColor(technology, status)
         const isHovered = hoveredId === antenna.id
         return (
           <CircleMarker
@@ -61,7 +79,7 @@ export function MarkerLayer({ antennas, onAntennaClick }: MarkerLayerProps) {
             <Tooltip className="marker-tooltip" sticky>
               <span className="tooltip-site-id">{antenna.siteId}</span>
               <span className="tooltip-name">{antenna.name}</span>
-              <span className="tooltip-meta">{antenna.technology} · {antenna.status.toUpperCase()}</span>
+              <span className="tooltip-meta">{technology} · {status.toUpperCase()}</span>
             </Tooltip>
           </CircleMarker>
         )
