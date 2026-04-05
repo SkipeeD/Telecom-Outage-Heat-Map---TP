@@ -1,13 +1,22 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /antennas/{document=**} {
+    match /topology/{document=**} {
       allow read: if request.auth != null;
       allow write: if false;
     }
     match /alarms/{document=**} {
       allow read: if request.auth != null;
       allow write: if false;
+    }
+    match /incidents/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update, delete: if false;
     }
   }
 }
