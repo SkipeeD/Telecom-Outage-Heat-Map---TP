@@ -86,8 +86,6 @@ export function NameEntryDialog() {
       <DialogContent 
         className="sm:max-w-[425px] bg-[var(--bg-overlay)] border-[var(--glass-border)] backdrop-blur-2xl"
         showCloseButton={false}
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold text-[var(--text-primary)]">
