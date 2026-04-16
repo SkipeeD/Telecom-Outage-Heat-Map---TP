@@ -25,6 +25,12 @@ const db = getFirestore()
 // New alarm severity: mostly warning/minor, occasional major, rare critical.
 // ---------------------------------------------------------------------------
 
+const ONCE = process.argv.includes('--once')
+const DURATION_ARG = process.argv.find(a => a.startsWith('--duration='))
+const DURATION_MS = DURATION_ARG ? parseInt(DURATION_ARG.split('=')[1], 10) : null
+const MIN_ARG = process.argv.find(a => a.startsWith('--min='))
+const MAX_ARG = process.argv.find(a => a.startsWith('--max='))
+
 const MIN_INTERVAL_MS = MIN_ARG ? parseInt(MIN_ARG.split('=')[1], 10) : 60_000
 const MAX_INTERVAL_MS = MAX_ARG ? parseInt(MAX_ARG.split('=')[1], 10) : 120_000
 const TRIGGER_PROBABILITY = 0.6
@@ -253,12 +259,6 @@ async function resolveAlarm() {
 
   console.log(`[simulate] RESOLVE  ${alarm.severity.padEnd(8)} — ${alarm.siteId} / ${alarm.technology} — "${alarm.text}"`)
 }
-
-const ONCE = process.argv.includes('--once')
-const DURATION_ARG = process.argv.find(a => a.startsWith('--duration='))
-const DURATION_MS = DURATION_ARG ? parseInt(DURATION_ARG.split('=')[1], 10) : null
-const MIN_ARG = process.argv.find(a => a.startsWith('--min='))
-const MAX_ARG = process.argv.find(a => a.startsWith('--max='))
 
 // ---------------------------------------------------------------------------
 // Main loop
