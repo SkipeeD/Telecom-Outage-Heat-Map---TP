@@ -65,11 +65,6 @@ const STATUS_SLOTS: AlarmSeverity[] = [
   'ok',
 ]
 
-// Incident status values matching xlsx
-const INCIDENT_STATUSES = ['ASSIGNED', 'IN PROGRESS', 'RESOLVED', 'CLOSED'] as const
-const INCIDENT_URGENCIES = ['1-Critical', '2-High', '3-Medium', '4-Low'] as const
-const INCIDENT_IMPACTS   = ['1-Extensive/Widespread', '2-Significant/Large', '3-Moderate/Limited', '4-Minor/Localized'] as const
-const INCIDENT_PRIORITIES = ['1-Critical', '2-High', '3-Medium', '4-Low'] as const
 const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7', 'USER8']
 
 const PROVIDERS: string[] = ['Vodafone RO', 'Orange RO', 'Digi RO', 'Telekom RO']

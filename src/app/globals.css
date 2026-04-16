@@ -1,62 +1,238 @@
-/* 1. External imports MUST come first */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap');
 
 /* 2. Tailwind framework import */
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-/* 3. Design System Variables */
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   DARK MODE — DEFAULT (Primary Experience)
+   ============================================================ */
 :root {
   /* Backgrounds */
-  --bg-primary:    #0f0f1a;   /* Page background — darkest */
-  --bg-surface:    #1a1a2e;   /* Cards, panels, sidebar */
-  --bg-elevated:   #22223a;   /* Dropdowns, tooltips, modals */
-  --bg-hover:      #2a2a45;   /* Hover states on interactive elements */
+  --bg-base:      #080810;
+  --bg-surface:   #0e0e1a;
+  --bg-overlay:   #13131f;
+  --bg-subtle:    #1a1a2e;
+  --bg-muted:     #22223a;
+
+  /* Glass */
+  --glass-bg:     rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-hover:  rgba(255, 255, 255, 0.06);
 
   /* Borders */
-  --border-subtle: #2e2e4a;   /* Default card/panel border */
-  --border-strong: #4a4a6a;   /* Focused/active element border */
+  --border:        rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --border-accent: rgba(124, 111, 247, 0.4);
 
   /* Text */
-  --text-primary:   #e8e6f0;  /* Main readable text */
-  --text-secondary: #9896b0;  /* Labels, hints, secondary info */
-  --text-muted:     #5f5e7a;  /* Disabled, placeholder text */
+  --text-primary:   #f0eeff;
+  --text-secondary: #8b89a8;
+  --text-muted:     #4a4868;
+  --text-inverse:   #080810;
 
-  /* Brand accent */
-  --accent:         #7F77DD;  /* Primary interactive accent — purple */
-  --accent-hover:   #9990e8;  /* Hover state of accent */
-  --accent-subtle:  #2a2850;  /* Subtle accent background */
+  /* Brand */
+  --accent:        #7c6ff7;
+  --accent-bright: #9d94ff;
+  --accent-dim:    rgba(124, 111, 247, 0.15);
+  --accent-glow:   rgba(124, 111, 247, 0.25);
 
   /* Alarm severity */
-  --alarm-critical: #E24B4A;  /* Critical — red */
-  --alarm-major:    #EF9F27;  /* Major — amber */
-  --alarm-minor:    #FAC775;  /* Minor — yellow */
-  --alarm-warning:  #85B7EB;  /* Warning — blue */
-  --alarm-ok:       #5DCAA5;  /* OK / resolved — green */
+  --alarm-critical: #f04f4f;
+  --alarm-major:    #f59e0b;
+  --alarm-minor:    #fbbf24;
+  --alarm-warning:  #60a5fa;
+  --alarm-ok:       #34d399;
 
-  /* Technology type */
-  --tech-5g:  #7F77DD;        /* 5G — purple */
-  --tech-4g:  #1D9E75;        /* 4G — green */
-  --tech-3g:  #EF9F27;        /* 3G — orange */
-  --tech-2g:  #85B7EB;        /* 2G — blue */
-  --tech-b2b: #D85A30;        /* B2B — coral */
+  /* Technology types */
+  --tech-5g:  #7c6ff7;
+  --tech-4g:  #10b981;
+  --tech-3g:  #f59e0b;
+  --tech-2g:  #60a5fa;
+  --tech-b2b: #f97316;
 
   /* Semantic */
-  --success: #5DCAA5;
-  --danger:  #E24B4A;
-  --warning: #EF9F27;
-  --info:    #85B7EB;
+  --success: #34d399;
+  --danger:  #f04f4f;
+  --warning: #f59e0b;
+  --info:    #60a5fa;
 
-  /* Typography variables */
-  --font-sans: 'IBM Plex Sans', sans-serif;
-  --font-mono: 'IBM Plex Mono', monospace;
+  /* Radius */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   20px;
+  --radius-full: 9999px;
+
+  /* Shadows — deeper for dark mode */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.6), 0 4px 8px rgba(0,0,0,0.4);
+  --shadow-glow:0 0 24px var(--accent-glow);
+
+  /* Transitions */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast:   120ms;
+  --duration-normal: 200ms;
+  --duration-slow:   350ms;
+
+  /* Typography */
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'Fira Code', monospace;
+
+  /* shadcn/ui remapping (Dark as default) */
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+  --card: var(--bg-surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-overlay);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--bg-subtle);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-muted);
+  --muted-foreground: var(--text-muted);
+  --accent-foreground: #ffffff;
+  --destructive: var(--alarm-critical);
+  --border: var(--border);
+  --input: var(--border);
+  --ring: var(--accent);
+  --radius: 0.625rem;
 }
 
-/* 4. Global Base Styles */
+/* ============================================================
+   LIGHT MODE — optional override
+   ============================================================ */
+.light {
+  /* Backgrounds */
+  --bg-base:      #f4f4f8;
+  --bg-surface:   #ffffff;
+  --bg-overlay:   #f0f0f6;
+  --bg-subtle:    #e8e8f2;
+  --bg-muted:     #dddde8;
+
+  /* Glass */
+  --glass-bg:     rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(0, 0, 0, 0.07);
+  --glass-hover:  rgba(0, 0, 0, 0.04);
+
+  /* Borders */
+  --border:        rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --border-accent: rgba(108, 95, 245, 0.35);
+
+  /* Text */
+  --text-primary:   #0d0d18;
+  --text-secondary: #52506e;
+  --text-muted:     #9896b0;
+  --text-inverse:   #f0eeff;
+
+  /* Brand */
+  --accent:        #6c5ff5;
+  --accent-bright: #7c6ff7;
+  --accent-dim:    rgba(108, 95, 245, 0.1);
+  --accent-glow:   rgba(108, 95, 245, 0.18);
+
+  /* Alarm severity */
+  --alarm-critical: #dc2626;
+  --alarm-major:    #d97706;
+  --alarm-minor:    #ca8a04;
+  --alarm-warning:  #2563eb;
+  --alarm-ok:       #059669;
+
+  /* Technology types */
+  --tech-5g:  #6c5ff5;
+  --tech-4g:  #059669;
+  --tech-3g:  #d97706;
+  --tech-2g:  #2563eb;
+  --tech-b2b: #ea580c;
+
+  /* Semantic */
+  --success: #059669;
+  --danger:  #dc2626;
+  --warning: #d97706;
+  --info:    #2563eb;
+
+  /* Shadows — lighter for light mode */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06);
+  --shadow-glow:0 0 24px var(--accent-glow);
+}
+
+/* ============================================================
+   BASE STYLES
+   ============================================================ */
+* { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background var(--duration-slow) var(--ease-smooth),
+              color var(--duration-slow) var(--ease-smooth);
+}
+
 html, body {
   height: 100%;
   margin: 0;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  overflow: hidden; /* Prevent outer container scroll as requested */
+  overflow: hidden;
+}
+
+@theme inline {
+  --font-heading:    var(--font-sans);
+  --font-sans:    var(--font-sans);
+  --font-mono:    var(--font-mono);
+  --color-ring:    var(--ring);
+  --color-input:    var(--input);
+  --color-border:    var(--border);
+  --color-destructive:    var(--destructive);
+  --color-accent-foreground:    var(--accent-foreground);
+  --color-accent:    var(--accent);
+  --color-muted-foreground:    var(--muted-foreground);
+  --color-muted:    var(--muted);
+  --color-secondary-foreground:    var(--secondary-foreground);
+  --color-secondary:    var(--secondary);
+  --color-primary-foreground:    var(--primary-foreground);
+  --color-primary:    var(--primary);
+  --color-popover-foreground:    var(--popover-foreground);
+  --color-popover:    var(--popover);
+  --color-card-foreground:    var(--card-foreground);
+  --color-card:    var(--card);
+  --color-foreground:    var(--foreground);
+  --color-background:    var(--background);
+  --radius-sm:    var(--radius-sm);
+  --radius-md:    var(--radius-md);
+  --radius-lg:    var(--radius-lg);
+  --radius-xl:    var(--radius-xl);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Fix for Leaflet white grid lines between tiles */
+.leaflet-container {
+  background: #1a1a2e !important;
+}
+
+.leaflet-tile {
+  outline: 1px solid transparent;
+}
+
+.leaflet-container img.leaflet-tile {
+  /* Some browsers need this to prevent tiny gaps */
+  box-shadow: 0 0 1px transparent;
 }

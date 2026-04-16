@@ -1,11 +1,17 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
+import { FilterProvider } from "@/components/FilterProvider";
 import Navbar from "@/components/Navbar";
+import { NameEntryDialog } from "@/components/NameEntryDialog";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: "Telecom Outage Heat Map",
-  description: "Professional NOC Dashboard",
+  title: "SIGNALIS | Outage Heat Map",
+  description: "Professional Telecom NOC Dashboard",
 };
 
 export default function RootLayout({
@@ -14,14 +20,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-      <html lang="en" className="h-full antialiased">
+      <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable)}>
       <body className="h-full flex flex-col bg-bg-primary text-text-primary">
         <AuthProvider>
-          <Navbar />
-          {/* Main Content Area */}
-          <main className="flex-1 relative overflow-hidden">
-            {children}
-          </main>
+          <FilterProvider>
+            <Navbar />
+            {/* Main Content Area */}
+            <main className="flex-1 relative overflow-hidden">
+              {children}
+            </main>
+            <NameEntryDialog />
+          </FilterProvider>
         </AuthProvider>
       </body>
       </html>

@@ -51,6 +51,7 @@ export interface Antenna {
 export interface UserProfile {
   uid: string
   email: string
+  displayName?: string
   role: 'engineer' | 'admin'
   createdAt: string
 }
