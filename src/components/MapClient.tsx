@@ -31,6 +31,7 @@ export default function MapClient({ antennas, selectedId, activeFilters, onAnten
     <MapContainer
       center={[45.9, 24.9]}
       zoom={7}
+      zoomControl={false}
       style={{ width: '100%', height: '100%', background: '#1a1a2e' }}
     >
       <TileLayer
