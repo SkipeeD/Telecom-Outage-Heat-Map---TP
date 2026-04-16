@@ -254,6 +254,10 @@ async function resolveAlarm() {
   console.log(`[simulate] RESOLVE  ${alarm.severity.padEnd(8)} — ${alarm.siteId} / ${alarm.technology} — "${alarm.text}"`)
 }
 
+const ONCE = process.argv.includes('--once')
+const DURATION_ARG = process.argv.find(a => a.startsWith('--duration='))
+const DURATION_MS = DURATION_ARG ? parseInt(DURATION_ARG.split('=')[1], 10) : null
+
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
@@ -268,20 +272,36 @@ async function tick() {
     console.error('[simulate] Error during tick:', err)
   }
 
+  if (ONCE) return
+
   const next = MIN_INTERVAL_MS + Math.random() * (MAX_INTERVAL_MS - MIN_INTERVAL_MS)
+
+  if (DURATION_MS !== null && Date.now() - startedAt + next > DURATION_MS) {
+    console.log('[simulate] Duration limit reached — exiting cleanly')
+    process.exit(0)
+  }
+
   console.log(`[simulate] Next event in ${Math.round(next / 1000)}s\n`)
   setTimeout(tick, next)
 }
 
 async function run() {
-  console.log('[simulate] Alarm simulation starting — normal mode')
-  console.log(`[simulate] Interval: ${MIN_INTERVAL_MS / 1000}–${MAX_INTERVAL_MS / 1000}s | Trigger: ${TRIGGER_PROBABILITY * 100}% / Resolve: ${(1 - TRIGGER_PROBABILITY) * 100}%\n`)
+  if (ONCE) {
+    console.log('[simulate] Running single tick (--once mode)')
+  } else {
+    console.log('[simulate] Alarm simulation starting — normal mode')
+    console.log(`[simulate] Interval: ${MIN_INTERVAL_MS / 1000}–${MAX_INTERVAL_MS / 1000}s | Trigger: ${TRIGGER_PROBABILITY * 100}% / Resolve: ${(1 - TRIGGER_PROBABILITY) * 100}%\n`)
+  }
 
   await initIncidentCounter()
   console.log(`[simulate] Incident counter starts at INC${String(incidentCounter).padStart(7, '0')}\n`)
 
-  // First event after 5 s so you can see it start
-  setTimeout(tick, 5_000)
+  if (ONCE) {
+    await tick()
+  } else {
+    // First event after 5 s so you can see it start
+    setTimeout(tick, 5_000)
+  }
 }
 
 run().catch(err => {
