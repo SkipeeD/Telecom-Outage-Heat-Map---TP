@@ -285,12 +285,17 @@ async function tick() {
   setTimeout(tick, next)
 }
 
+let startedAt = 0
+
 async function run() {
+  startedAt = Date.now()
+
   if (ONCE) {
     console.log('[simulate] Running single tick (--once mode)')
   } else {
     console.log('[simulate] Alarm simulation starting — normal mode')
     console.log(`[simulate] Interval: ${MIN_INTERVAL_MS / 1000}–${MAX_INTERVAL_MS / 1000}s | Trigger: ${TRIGGER_PROBABILITY * 100}% / Resolve: ${(1 - TRIGGER_PROBABILITY) * 100}%\n`)
+    if (DURATION_MS) console.log(`[simulate] Will exit after ${DURATION_MS / 1000}s\n`)
   }
 
   await initIncidentCounter()
