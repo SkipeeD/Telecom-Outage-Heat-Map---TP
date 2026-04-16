@@ -25,8 +25,8 @@ const db = getFirestore()
 // New alarm severity: mostly warning/minor, occasional major, rare critical.
 // ---------------------------------------------------------------------------
 
-const MIN_INTERVAL_MS = 60_000
-const MAX_INTERVAL_MS = 120_000
+const MIN_INTERVAL_MS = MIN_ARG ? parseInt(MIN_ARG.split('=')[1], 10) : 60_000
+const MAX_INTERVAL_MS = MAX_ARG ? parseInt(MAX_ARG.split('=')[1], 10) : 120_000
 const TRIGGER_PROBABILITY = 0.6
 
 const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7', 'USER8']
@@ -257,6 +257,8 @@ async function resolveAlarm() {
 const ONCE = process.argv.includes('--once')
 const DURATION_ARG = process.argv.find(a => a.startsWith('--duration='))
 const DURATION_MS = DURATION_ARG ? parseInt(DURATION_ARG.split('=')[1], 10) : null
+const MIN_ARG = process.argv.find(a => a.startsWith('--min='))
+const MAX_ARG = process.argv.find(a => a.startsWith('--max='))
 
 // ---------------------------------------------------------------------------
 // Main loop
