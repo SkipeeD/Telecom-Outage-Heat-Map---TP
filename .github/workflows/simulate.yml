@@ -26,5 +26,5 @@ jobs:
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > service-account.json
 
       - name: Run simulation
-        run: npx ts-node scripts/simulate.ts --duration=270000
+        run: yarn tsx scripts/simulate.ts --duration=270000
         timeout-minutes: 5
