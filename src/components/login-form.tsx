@@ -12,7 +12,6 @@ import {
   FieldGroup,
   FieldLabel,
   FieldError,
-  FieldDescription,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
@@ -161,6 +160,18 @@ export function LoginForm({
               </Button>
             </motion.div>
 
+            <motion.div variants={itemVariants}>
+              <Link href="/register" className="block w-full">
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full bg-[var(--glass-bg)] hover:bg-[var(--glass-hover)] border-[var(--glass-border)] hover:border-[var(--border-strong)] text-[var(--text-primary)] rounded-[var(--radius-md)] h-10 uppercase tracking-widest text-[13px] font-medium transition-all backdrop-blur-sm"
+                >
+                  SIGN UP
+                </Button>
+              </Link>
+            </motion.div>
+
             <motion.div variants={itemVariants} className="relative flex items-center gap-4 py-2">
               <Separator className="flex-1 bg-[var(--glass-border)]"/>
               <span
@@ -194,15 +205,7 @@ export function LoginForm({
               </Button>
             </motion.div>
 
-            <motion.div variants={itemVariants}>
-              <FieldDescription className="text-center text-[12px]">
-                Don&apos;t have an account?{" "}
-                <Link href="/register"
-                      className="text-[var(--accent)] hover:text-[var(--accent-bright)] underline underline-offset-4">
-                  Register New
-                </Link>
-              </FieldDescription>
-            </motion.div>
+
           </FieldGroup>
         </form>
       </motion.div>
