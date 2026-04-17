@@ -20,22 +20,24 @@ if (getApps().length === 0) {
 const db = getFirestore()
 
 // ---------------------------------------------------------------------------
-// Normal mode — realistic NOC simulation
-// One event every 60–120 seconds. 60% trigger, 40% resolve.
-// New alarm severity: mostly warning/minor, occasional major, rare critical.
+// CLI args
 // ---------------------------------------------------------------------------
 
-const ONCE = process.argv.includes('--once')
+const ONCE        = process.argv.includes('--once')
 const DURATION_ARG = process.argv.find(a => a.startsWith('--duration='))
-const DURATION_MS = DURATION_ARG ? parseInt(DURATION_ARG.split('=')[1], 10) : null
-const MIN_ARG = process.argv.find(a => a.startsWith('--min='))
-const MAX_ARG = process.argv.find(a => a.startsWith('--max='))
+const DURATION_MS  = DURATION_ARG ? parseInt(DURATION_ARG.split('=')[1], 10) : null
+const MIN_ARG      = process.argv.find(a => a.startsWith('--min='))
+const MAX_ARG      = process.argv.find(a => a.startsWith('--max='))
 
-const MIN_INTERVAL_MS = MIN_ARG ? parseInt(MIN_ARG.split('=')[1], 10) : 60_000
-const MAX_INTERVAL_MS = MAX_ARG ? parseInt(MAX_ARG.split('=')[1], 10) : 120_000
+const MIN_INTERVAL_MS  = MIN_ARG ? parseInt(MIN_ARG.split('=')[1], 10) : 60_000
+const MAX_INTERVAL_MS  = MAX_ARG ? parseInt(MAX_ARG.split('=')[1], 10) : 120_000
 const TRIGGER_PROBABILITY = 0.6
 
 const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7', 'USER8']
+
+// ---------------------------------------------------------------------------
+// Alarm catalogue
+// ---------------------------------------------------------------------------
 
 interface AlarmTemplate {
   alarmNumber: number
@@ -71,7 +73,6 @@ const ALARM_CATALOGUE: AlarmTemplate[] = [
   { alarmNumber: 6004,  text: 'Temperature threshold exceeded',              severity: 'warning' },
 ]
 
-// Weighted severity distribution for new alarms in normal conditions
 const SEVERITY_WEIGHTS: { severity: AlarmSeverity; weight: number }[] = [
   { severity: 'warning',  weight: 50 },
   { severity: 'minor',    weight: 30 },
@@ -112,18 +113,52 @@ function toPriority(severity: AlarmSeverity): string {
   }
 }
 
+// ---------------------------------------------------------------------------
+// In-memory caches — loaded once at startup, kept in sync with writes
+// ---------------------------------------------------------------------------
+
+interface CachedSite {
+  siteId: string
+  cells:  any[]
+}
+
+// antennaId → site data
+const topologyCache = new Map<string, CachedSite>()
+
+// alarmId → alarm data
+const activeAlarms = new Map<string, any>()
+
+// alarmId → incidentId (so we never need to query incidents during resolve)
+const alarmToIncident = new Map<string, string>()
+
 let incidentCounter = 1
 
-async function initIncidentCounter() {
-  const snap = await db.collection('incidents')
+async function initCaches() {
+  // Load topology
+  const topSnap = await db.collection('topology').get()
+  for (const doc of topSnap.docs) {
+    const d = doc.data()
+    topologyCache.set(doc.id, { siteId: d.siteId, cells: d.cells })
+  }
+  console.log(`[simulate] Topology cache loaded — ${topologyCache.size} sites`)
+
+  // Load active alarms
+  const alarmSnap = await db.collection('alarms').where('resolved', '==', false).get()
+  for (const doc of alarmSnap.docs) {
+    activeAlarms.set(doc.id, doc.data())
+  }
+  console.log(`[simulate] Active alarms loaded — ${activeAlarms.size} alarms`)
+
+  // Load incident counter
+  const incSnap = await db.collection('incidents')
     .orderBy('incidentNumber', 'desc')
     .limit(1)
     .get()
-
-  if (!snap.empty) {
-    const lastId = snap.docs[0].data().incidentNumber as string // e.g. INC0000042
+  if (!incSnap.empty) {
+    const lastId = incSnap.docs[0].data().incidentNumber as string
     incidentCounter = parseInt(lastId.replace('INC', ''), 10) + 1
   }
+  console.log(`[simulate] Incident counter starts at INC${String(incidentCounter).padStart(7, '0')}\n`)
 }
 
 function nextIncidentId(): string {
@@ -131,31 +166,21 @@ function nextIncidentId(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Trigger: pick a random ok cell, raise an alarm on it
+// Trigger: pick a random ok cell from cache, raise an alarm on it
 // ---------------------------------------------------------------------------
 async function triggerAlarm() {
-  const topSnap = await db.collection('topology').get()
-
-  // Collect all cells that are currently ok
   const eligible: {
     antennaId: string
-    siteId: string
-    cells: any[]
+    siteId:    string
+    cells:     any[]
     cellIndex: number
-    tech: Technology
+    tech:      Technology
   }[] = []
 
-  for (const doc of topSnap.docs) {
-    const site = doc.data()
+  for (const [antennaId, site] of topologyCache) {
     for (let i = 0; i < site.cells.length; i++) {
       if (site.cells[i].status === 'ok') {
-        eligible.push({
-          antennaId: doc.id,
-          siteId:    site.siteId,
-          cells:     site.cells,
-          cellIndex: i,
-          tech:      site.cells[i].technology,
-        })
+        eligible.push({ antennaId, siteId: site.siteId, cells: site.cells, cellIndex: i, tech: site.cells[i].technology })
       }
     }
   }
@@ -165,10 +190,10 @@ async function triggerAlarm() {
     return
   }
 
-  const pick     = eligible[Math.floor(Math.random() * eligible.length)]
-  const severity = pickSeverity()
-  const template = pickAlarm(severity)
-  const alarmId  = `${pick.antennaId}-${pick.tech.toLowerCase()}-alarm-active`
+  const pick      = eligible[Math.floor(Math.random() * eligible.length)]
+  const severity  = pickSeverity()
+  const template  = pickAlarm(severity)
+  const alarmId   = `${pick.antennaId}-${pick.tech.toLowerCase()}-alarm-active`
   const alarmTime = new Date().toISOString()
 
   const alarm = {
@@ -212,44 +237,44 @@ async function triggerAlarm() {
   })
   await batch.commit()
 
+  // Update caches
+  topologyCache.set(pick.antennaId, { siteId: pick.siteId, cells: updatedCells })
+  activeAlarms.set(alarmId, alarm)
+  alarmToIncident.set(alarmId, incidentId)
+
   console.log(`[simulate] TRIGGER  ${severity.padEnd(8)} — ${pick.siteId} / ${pick.tech} — "${template.text}"`)
 }
 
 // ---------------------------------------------------------------------------
-// Resolve: pick a random active alarm, clear it
+// Resolve: pick a random active alarm from cache, clear it
 // ---------------------------------------------------------------------------
 async function resolveAlarm() {
-  const snap = await db.collection('alarms').where('resolved', '==', false).get()
-
-  if (snap.empty) {
+  if (activeAlarms.size === 0) {
     console.log('[simulate] No active alarms to resolve — triggering instead')
     return triggerAlarm()
   }
 
-  const alarmDoc  = snap.docs[Math.floor(Math.random() * snap.docs.length)]
-  const alarm     = alarmDoc.data()
+  const alarmIds  = Array.from(activeAlarms.keys())
+  const alarmId   = alarmIds[Math.floor(Math.random() * alarmIds.length)]
+  const alarm     = activeAlarms.get(alarmId)!
   const cancelTime = new Date().toISOString()
 
-  // Clear the cell in topology
-  const topDoc = await db.collection('topology').doc(alarm.antennaId).get()
-  if (!topDoc.exists) return
+  const site = topologyCache.get(alarm.antennaId)
+  if (!site) return
 
-  const site = topDoc.data()!
-  const updatedCells = (site.cells as any[]).map((cell: any) =>
+  const updatedCells = site.cells.map((cell: any) =>
     cell.technology === alarm.technology
       ? { technology: cell.technology, status: 'ok' }
       : cell
   )
 
-  // Find and close the linked incident (client-side filter to avoid compound index requirement)
-  const incSnap = await db.collection('incidents').where('alarmId', '==', alarmDoc.id).get()
-  const openInc = incSnap.docs.find(d => !['RESOLVED', 'CLOSED'].includes(d.data().status))
+  const incidentId = alarmToIncident.get(alarmId)
 
   const batch = db.batch()
-  batch.update(alarmDoc.ref, { resolved: true, alarmStatus: 0, cancelTime })
+  batch.update(db.collection('alarms').doc(alarmId), { resolved: true, alarmStatus: 0, cancelTime })
   batch.update(db.collection('topology').doc(alarm.antennaId), { cells: updatedCells })
-  if (openInc) {
-    batch.update(openInc.ref, {
+  if (incidentId) {
+    batch.update(db.collection('incidents').doc(incidentId), {
       status:       'RESOLVED',
       resolvedDate: cancelTime,
       closedDate:   cancelTime,
@@ -257,12 +282,18 @@ async function resolveAlarm() {
   }
   await batch.commit()
 
+  // Update caches
+  topologyCache.set(alarm.antennaId, { siteId: site.siteId, cells: updatedCells })
+  activeAlarms.delete(alarmId)
+  alarmToIncident.delete(alarmId)
+
   console.log(`[simulate] RESOLVE  ${alarm.severity.padEnd(8)} — ${alarm.siteId} / ${alarm.technology} — "${alarm.text}"`)
 }
 
 // ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
+
 async function tick() {
   try {
     if (Math.random() < TRIGGER_PROBABILITY) {
@@ -300,13 +331,11 @@ async function run() {
     if (DURATION_MS) console.log(`[simulate] Will exit after ${DURATION_MS / 1000}s\n`)
   }
 
-  await initIncidentCounter()
-  console.log(`[simulate] Incident counter starts at INC${String(incidentCounter).padStart(7, '0')}\n`)
+  await initCaches()
 
   if (ONCE) {
     await tick()
   } else {
-    // First event after 5 s so you can see it start
     setTimeout(tick, 5_000)
   }
 }
