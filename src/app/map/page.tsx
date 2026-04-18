@@ -7,6 +7,7 @@ import { subscribeToAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useFilters, FilterSeverity } from '@/components/FilterProvider'
 import type { Antenna, AlarmSeverity } from '@/types'
+import { AntennaPopup } from '@/components/antenna/AntennaPopup'
 
 const MapClient = dynamic(() => import('@/app/map/Map'), { 
   ssr: false,
@@ -39,6 +40,8 @@ export default function MapPage() {
   const { selectedSeverity, setCounts } = useFilters()
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [popupAntenna, setPopupAntenna] = useState<Antenna | null>(null)
+  const [popupAnchor, setPopupAnchor] = useState<Element | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -67,8 +70,22 @@ export default function MapPage() {
     return () => unsubscribe()
   }, [user, setCounts])
 
-  const handleAntennaClick = (antenna: Antenna) => {
-    setSelectedId(prev => (prev === antenna.id ? null : antenna.id))
+  const handleAntennaClick = (antenna: Antenna, anchorEl: Element) => {
+    const isDeselecting = selectedId === antenna.id
+    setSelectedId(isDeselecting ? null : antenna.id)
+    if (isDeselecting) {
+      setPopupAntenna(null)
+      setPopupAnchor(null)
+    } else {
+      setPopupAntenna(antenna)
+      setPopupAnchor(anchorEl)
+    }
+  }
+
+  const handlePopupClose = () => {
+    setSelectedId(null)
+    setPopupAntenna(null)
+    setPopupAnchor(null)
   }
 
   if (authLoading) return null
@@ -79,16 +96,30 @@ export default function MapPage() {
 
   return (
     <div className="flex h-screen bg-[var(--bg-base)] overflow-hidden transition-colors duration-300">
-      
+
       {/* Map Area */}
-      <div className="flex-1 relative min-w-0">
-        <MapClient 
-          antennas={antennas} 
+      <motion.div
+        className="flex-1 relative min-w-0"
+        initial={{ opacity: 0, filter: 'blur(4px)' }}
+        animate={{ opacity: 1, filter: 'blur(0px)' }}
+        transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
+      >
+        <MapClient
+          antennas={antennas}
           selectedId={selectedId}
           activeFilters={activeFilters}
-          onAntennaClick={handleAntennaClick} 
+          onAntennaClick={handleAntennaClick}
         />
-      </div>
+      </motion.div>
+
+      {popupAntenna && (
+        <AntennaPopup
+          antenna={popupAntenna}
+          anchor={popupAnchor}
+          open={!!popupAntenna}
+          onClose={handlePopupClose}
+        />
+      )}
     </div>
   )
 }

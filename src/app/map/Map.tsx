@@ -10,7 +10,7 @@ export interface MapProps {
     technologies?: Technology[]
     severities?: AlarmSeverity[]
   }
-  onAntennaClick: (antenna: Antenna) => void
+  onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
 }
 
 const MapWithNoSSR = dynamic(() => import('../../components/MapClient'), {

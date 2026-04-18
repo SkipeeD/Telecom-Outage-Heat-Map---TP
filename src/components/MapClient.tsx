@@ -23,7 +23,7 @@ interface MapClientProps {
     technologies?: Technology[]
     severities?: AlarmSeverity[]
   }
-  onAntennaClick: (antenna: Antenna) => void
+  onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
 }
 
 export default function MapClient({ antennas, selectedId, activeFilters, onAntennaClick }: MapClientProps) {
