@@ -123,7 +123,12 @@ export default function Navbar() {
       </div>
 
       {/* Filter Toolbar - Centered */}
-      <div className="flex items-center gap-1.5 p-1 bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)]">
+      <motion.div
+        initial={{ opacity: 0, y: -6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1], delay: 0.1 }}
+        className="flex items-center gap-1.5 p-1 bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)]"
+      >
         {filters.map((f) => {
           const isActive = selectedSeverity === f
           const config = severityConfig[f]
@@ -136,27 +141,53 @@ export default function Navbar() {
               onClick={() => setSelectedSeverity(f)}
               className={cn(
                 "relative flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)]",
-                "text-[11px] font-medium uppercase tracking-widest transition-all duration-200 border",
-                isActive 
-                  ? "border-transparent text-white" 
-                  : "bg-transparent border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)]"
+                "text-[11px] font-medium uppercase tracking-widest transition-colors duration-200 border border-transparent overflow-hidden",
+                isActive
+                  ? "text-white"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)]"
               )}
-              style={isActive ? { backgroundColor: config.color, boxShadow: `0 0 12px ${config.color}44` } : {}}
             >
-              {config.label}
+              {isActive && (
+                <motion.span
+                  layoutId="filter-active-pill"
+                  className="absolute inset-0 rounded-[var(--radius-md)]"
+                  style={{
+                    backgroundColor: config.color,
+                    boxShadow: `0 0 14px ${config.color}55`,
+                  }}
+                  transition={{ type: 'spring', bounce: 0.2, duration: 0.38 }}
+                />
+              )}
+              <span className="relative z-10">{config.label}</span>
               <span className={cn(
-                "px-1.5 py-0.5 rounded-full text-[10px] font-mono",
-                isActive ? "bg-white/20 text-white" : "bg-[var(--bg-muted)] text-[var(--text-muted)]"
+                "relative z-10 px-1.5 py-0.5 rounded-full text-[10px] font-mono overflow-hidden",
+                isActive ? "bg-white/20 text-white" : "bg-[var(--bg-subtle)] text-[var(--text-primary)]"
               )}>
-                {count}
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.span
+                    key={count}
+                    initial={{ y: -10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: 10, opacity: 0 }}
+                    transition={{ duration: 0.14, ease: [0.4, 0, 0.2, 1] }}
+                    className="block"
+                  >
+                    {count}
+                  </motion.span>
+                </AnimatePresence>
               </span>
             </motion.button>
           )
         })}
-      </div>
+      </motion.div>
 
       {/* User Actions */}
-      <div className="flex items-center justify-end gap-5 w-1/4">
+      <motion.div
+        initial={{ opacity: 0, x: 10 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1], delay: 0.15 }}
+        className="flex items-center justify-end gap-5 w-1/4"
+      >
         <div className="flex flex-col items-end">
           <span className="text-[13px] font-medium text-[var(--text-primary)] leading-none">
             {displayName}
@@ -172,18 +203,19 @@ export default function Navbar() {
 
         <motion.button
           whileTap={{ scale: 0.95 }}
+          whileHover={{ scale: 1.02 }}
           onClick={handleSignOut}
           className="
             text-[11px] font-medium uppercase tracking-widest px-3 py-1.5
             rounded-[var(--radius-md)] border border-[var(--glass-border)]
             text-[var(--text-secondary)] hover:text-[var(--text-primary)]
             hover:bg-[var(--glass-hover)] hover:border-[var(--border-strong)]
-            transition-all duration-200
+            transition-colors duration-200
           "
         >
           Sign Out
         </motion.button>
-      </div>
+      </motion.div>
     </header>
   )
 }
