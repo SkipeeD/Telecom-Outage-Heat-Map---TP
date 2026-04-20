@@ -1,14 +1,10 @@
 'use client'
 
-import { useState, useMemo, Fragment } from 'react'
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { CircleMarker, Tooltip } from 'react-leaflet'
 import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
 
-/**
- * Utility to determine the "worst" cell status for an antenna.
- * Higher rank = more critical.
- */
 const severityRank: Record<AlarmSeverity, number> = {
   critical: 5,
   major: 4,
@@ -26,14 +22,9 @@ function worstCell(antenna: Antenna): { technology: Technology; status: AlarmSev
   )
 }
 
-/**
- * Returns fill (technology) and stroke (severity) colors as resolved strings.
- * Resolve them using getComputedStyle as mandated by DESIGN_SYSTEM.md to respect themes.
- * @export
- */
 export function getMarkerColor(tech: Technology, severity: AlarmSeverity) {
   if (typeof window === 'undefined') return { fill: '#6c5ff5', stroke: '#059669' }
-  
+
   const root = document.documentElement
   const style = getComputedStyle(root)
 
@@ -51,10 +42,10 @@ export function getMarkerColor(tech: Technology, severity: AlarmSeverity) {
     warning:  style.getPropertyValue('--alarm-warning').trim(),
     ok:       style.getPropertyValue('--alarm-ok').trim(),
   }
-  
-  return { 
-    fill: techFill[tech] || '#6c5ff5', 
-    stroke: severityStroke[severity] || '#059669' 
+
+  return {
+    fill: techFill[tech] || '#6c5ff5',
+    stroke: severityStroke[severity] || '#059669',
   }
 }
 
@@ -65,100 +56,85 @@ interface MarkerLayerProps {
     technologies?: Technology[]
     severities?: AlarmSeverity[]
   }
-  onAntennaClick: (antenna: Antenna) => void
+  onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
 }
 
-/**
- * MarkerLayer Component
- * Renders antennas as interactive CircleMarkers on the map.
- * Follows DESIGN_SYSTEM.md for coloring, sizing, and animations.
- */
 export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClick }: MarkerLayerProps) {
   const { theme } = useTheme()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
-  // Memoize marker status and colors to optimize render and force theme re-sync
+  // Map from marker id → raw SVG path element captured on Leaflet's `add` event
+  const markerPaths = useRef(new Map<string, SVGElement>())
+
   const antennaMarkers = useMemo(() => {
     return antennas.map(antenna => {
       const { technology, status } = worstCell(antenna)
       const colors = getMarkerColor(technology, status)
-      return {
-        ...antenna,
-        worstTech: technology,
-        worstStatus: status,
-        colors
-      }
+      return { ...antenna, worstTech: technology, worstStatus: status, colors }
     })
   }, [antennas, theme])
 
-  const accentGlow = useMemo(() => {
-    if (typeof window === 'undefined') return 'rgba(124, 111, 247, 0.25)'
-    return getComputedStyle(document.documentElement).getPropertyValue('--accent-glow').trim()
-  }, [theme])
+  // Apply CSS scale transforms whenever hover/selection changes
+  useEffect(() => {
+    markerPaths.current.forEach((path, id) => {
+      if (id === selectedId) {
+        path.style.transform = 'scale(1.72)'
+        path.style.filter = 'drop-shadow(0 0 5px rgba(124,111,247,0.6))'
+      } else if (id === hoveredId) {
+        path.style.transform = 'scale(1.45)'
+        path.style.filter = ''
+      } else {
+        path.style.transform = 'scale(1)'
+        path.style.filter = ''
+      }
+    })
+  }, [selectedId, hoveredId])
 
   return (
     <>
       {antennaMarkers.map((marker) => {
         const isSelected = selectedId === marker.id
-        const isHovered = hoveredId === marker.id
-        
-        // Filter logic: Check if technology and severity match active filters (if any)
+        const extraAlarmCount = marker.cells.filter(c => c.currentAlarm && !c.currentAlarm.resolved).length - 1
+
         const matchesTech = !activeFilters?.technologies?.length || activeFilters.technologies.includes(marker.worstTech)
         const matchesSeverity = !activeFilters?.severities?.length || activeFilters.severities.includes(marker.worstStatus)
-        const matchesFilter = matchesTech && matchesSeverity
-
-        // Non-matching (filtered) antennas are hidden
-        if (!matchesFilter) return null
+        if (!matchesTech || !matchesSeverity) return null
 
         const { fill, stroke } = marker.colors
-        
-        // Marker sizing per DESIGN_SYSTEM.md: Default 7, Hover 10, Selected 12
-        let radius = 7
-        let strokeWidth = 2
-        if (isSelected) {
-          radius = 12
-          strokeWidth = 3
-        } else if (isHovered) {
-          radius = 10
-          strokeWidth = 2.5
-        }
 
         return (
           <Fragment key={`${marker.id}-${theme}`}>
-            {/* Outer Glow Ring for Selected State */}
-            {isSelected && (
-              <CircleMarker
-                center={[marker.latitude, marker.longitude]}
-                radius={radius + 6}
-                pathOptions={{
-                  fillColor: accentGlow,
-                  fillOpacity: 0.2,
-                  color: accentGlow,
-                  weight: 1,
-                  opacity: 0.4,
-                }}
-              />
-            )}
-            
             <CircleMarker
               center={[marker.latitude, marker.longitude]}
-              radius={radius}
+              radius={7}
               pathOptions={{
                 fillColor: fill,
                 fillOpacity: 1,
-                color: stroke,
-                weight: strokeWidth,
+                color: isSelected ? stroke : stroke,
+                weight: 2,
               }}
               eventHandlers={{
-                click: () => onAntennaClick(marker),
+                add: (e) => {
+                  const path = (e.target as unknown as { _path?: SVGElement })._path
+                  if (path) {
+                    markerPaths.current.set(marker.id, path)
+                    path.style.transformBox = 'fill-box'
+                    path.style.transformOrigin = 'center'
+                    path.style.transition = 'transform 220ms cubic-bezier(0.34,1.56,0.64,1), filter 220ms ease'
+                  }
+                },
+                remove: () => {
+                  markerPaths.current.delete(marker.id)
+                },
+                click: (e) => onAntennaClick(marker, e.originalEvent.target as Element),
                 mouseover: () => setHoveredId(marker.id),
                 mouseout: () => setHoveredId(null),
               }}
             >
-              <Tooltip 
+              <Tooltip
                 className="
-                  !bg-[var(--bg-overlay)] !border !border-[var(--glass-border)] 
-                  !rounded-[var(--radius-md)] !p-3 !shadow-[var(--shadow-lg)] 
+                  !bg-[var(--bg-overlay)] !border !border-[var(--glass-border)]
+                  !rounded-[var(--radius-md)] !p-3 !shadow-[var(--shadow-lg)]
                   !backdrop-blur-xl !text-[var(--text-primary)]
                 "
                 sticky
@@ -171,26 +147,23 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClic
                     {marker.name}
                   </span>
                   <div className="flex items-center gap-1.5 mt-1.5">
-                    <span 
+                    <span
                       className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
-                      style={{ 
-                        backgroundColor: `${fill}2a`, 
-                        borderColor: `${fill}6a`,
-                        color: fill
-                      }}
+                      style={{ backgroundColor: `${fill}2a`, borderColor: `${fill}6a`, color: fill }}
                     >
                       {marker.worstTech}
                     </span>
-                    <span 
+                    <span
                       className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
-                      style={{ 
-                        backgroundColor: `${stroke}2a`, 
-                        borderColor: `${stroke}6a`,
-                        color: stroke
-                      }}
+                      style={{ backgroundColor: `${stroke}2a`, borderColor: `${stroke}6a`, color: stroke }}
                     >
                       {marker.worstStatus.toUpperCase()}
                     </span>
+                    {extraAlarmCount > 0 && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.1)] text-[var(--text-primary)]">
+                        +{extraAlarmCount} alarm{extraAlarmCount > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </div>
                 </div>
               </Tooltip>

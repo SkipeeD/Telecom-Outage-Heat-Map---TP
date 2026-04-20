@@ -1,5 +1,5 @@
 # DESIGN_SYSTEM.md
-# Telecom Outage Heat Map — Frontend Design System v2.1
+# Telecom Outage Heat Map — Frontend Design System v2.2
 
 > **This file is law.** Every human and AI working on this project reads this before touching any frontend code. No exceptions.
 
@@ -11,7 +11,7 @@
 
 The one thing someone should remember: **everything feels alive but nothing feels noisy.**
 
-Dark mode is the primary experience. Light mode is a clean, high-contrast alternative — not an afterthought. Both must look equally polished.
+**Dark mode is the only experience right now.** Light mode variables are stubbed in `.light {}` but not wired up — do not reference them until the feature is built.
 
 ---
 
@@ -20,106 +20,39 @@ Dark mode is the primary experience. Light mode is a clean, high-contrast altern
 Use in this priority order:
 
 ```
-1. shadcn/ui       — base components (Button, Card, Badge, Dialog, etc.)
-2. MUI             — complex components only if shadcn doesn't have it
-3. motion/react    — all animations and transitions
-4. Tailwind CSS v4 — all layout, spacing, and utility overrides
+1. shadcn/ui (base-nova)  — base components (Button, Card, Badge, Dialog, etc.)
+2. motion/react           — all animations and transitions
+3. Tailwind CSS v4        — all layout, spacing, and utility overrides
 ```
 
+> **Note:** shadcn/ui in this project uses the `base-nova` style, which is backed by `@base-ui/react` primitives instead of Radix UI. The API is shadcn-compatible but the underlying primitives differ. MUI is **not installed** — do not add it.
+
 ### Rules
-- **shadcn/ui first** — always check shadcn before reaching for MUI
-- **Never mix shadcn and MUI for the same component type**
-- **MUI for complex data components only** — DataGrid, DatePicker, Autocomplete
+- **shadcn/ui first** — always check shadcn before building from scratch
 - **motion/react for all animations** — never raw CSS `transition` on interactive elements
-- **Tailwind for layout** — never use MUI `sx` prop for spacing or layout
+- **Tailwind for layout** — utility classes only, no inline `style` for spacing
 
 ---
 
 ## Color System
 
-### globals.css — Full Light + Dark Variable Set
+### globals.css — Dark Mode Default
+
+Dark is the primary experience. Dark values live in `:root`. A `.light` block exists but is not yet wired to the theme toggle — do not use it.
 
 ```css
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap');
 
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
 /* ============================================================
-   LIGHT MODE — default
+   DARK MODE — default (primary experience)
    ============================================================ */
 :root {
-  /* Backgrounds */
-  --bg-base:      #f4f4f8;
-  --bg-surface:   #ffffff;
-  --bg-overlay:   #f0f0f6;
-  --bg-subtle:    #e8e8f2;
-  --bg-muted:     #dddde8;
-
-  /* Glass */
-  --glass-bg:     rgba(255, 255, 255, 0.75);
-  --glass-border: rgba(0, 0, 0, 0.07);
-  --glass-hover:  rgba(0, 0, 0, 0.04);
-
-  /* Borders */
-  --border:        rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.16);
-  --border-accent: rgba(108, 95, 245, 0.35);
-
-  /* Text */
-  --text-primary:   #0d0d18;
-  --text-secondary: #52506e;
-  --text-muted:     #9896b0;
-  --text-inverse:   #f0eeff;
-
-  /* Brand */
-  --accent:        #6c5ff5;
-  --accent-bright: #7c6ff7;
-  --accent-dim:    rgba(108, 95, 245, 0.1);
-  --accent-glow:   rgba(108, 95, 245, 0.18);
-
-  /* Alarm severity — ONLY for alarm status, never decorative */
-  --alarm-critical: #dc2626;
-  --alarm-major:    #d97706;
-  --alarm-minor:    #ca8a04;
-  --alarm-warning:  #2563eb;
-  --alarm-ok:       #059669;
-
-  /* Technology types — ONLY for map markers and cells-down widget */
-  --tech-5g:  #6c5ff5;
-  --tech-4g:  #059669;
-  --tech-3g:  #d97706;
-  --tech-2g:  #2563eb;
-  --tech-b2b: #ea580c;
-
-  /* Semantic */
-  --success: #059669;
-  --danger:  #dc2626;
-  --warning: #d97706;
-  --info:    #2563eb;
-
-  /* Radius */
-  --radius-sm:   6px;
-  --radius-md:   10px;
-  --radius-lg:   14px;
-  --radius-xl:   20px;
-  --radius-full: 9999px;
-
-  /* Shadows — lighter for light mode */
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
-  --shadow-md:  0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
-  --shadow-lg:  0 8px 32px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06);
-  --shadow-glow:0 0 24px var(--accent-glow);
-
-  /* Transitions */
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
-  --duration-fast:   120ms;
-  --duration-normal: 200ms;
-  --duration-slow:   350ms;
-}
-
-/* ============================================================
-   DARK MODE — applied when <html> has class="dark"
-   ============================================================ */
-.dark {
   /* Backgrounds */
   --bg-base:      #080810;
   --bg-surface:   #0e0e1a;
@@ -149,14 +82,14 @@ Use in this priority order:
   --accent-dim:    rgba(124, 111, 247, 0.15);
   --accent-glow:   rgba(124, 111, 247, 0.25);
 
-  /* Alarm severity */
+  /* Alarm severity — ONLY for alarm status, never decorative */
   --alarm-critical: #f04f4f;
   --alarm-major:    #f59e0b;
   --alarm-minor:    #fbbf24;
   --alarm-warning:  #60a5fa;
   --alarm-ok:       #34d399;
 
-  /* Technology types */
+  /* Technology types — ONLY for map markers and cells-down widget */
   --tech-5g:  #7c6ff7;
   --tech-4g:  #10b981;
   --tech-3g:  #f59e0b;
@@ -169,26 +102,71 @@ Use in this priority order:
   --warning: #f59e0b;
   --info:    #60a5fa;
 
-  /* Shadows — deeper for dark mode */
+  /* Radius */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   20px;
+  --radius-full: 9999px;
+
+  /* Shadows */
   --shadow-sm:  0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
   --shadow-md:  0 4px 16px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
   --shadow-lg:  0 8px 32px rgba(0,0,0,0.6), 0 4px 8px rgba(0,0,0,0.4);
   --shadow-glow:0 0 24px var(--accent-glow);
+
+  /* Transitions */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast:   120ms;
+  --duration-normal: 200ms;
+  --duration-slow:   350ms;
+
+  /* Typography */
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'Fira Code', monospace;
 }
 
 /* ============================================================
-   BASE STYLES
+   LIGHT MODE — stubbed, not yet wired up
    ============================================================ */
-* { box-sizing: border-box; }
-
-body {
-  font-family: 'Geist', system-ui, sans-serif;
-  background: var(--bg-base);
-  color: var(--text-primary);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  transition: background var(--duration-slow) var(--ease-smooth),
-              color var(--duration-slow) var(--ease-smooth);
+.light {
+  --bg-base:      #f4f4f8;
+  --bg-surface:   #ffffff;
+  --bg-overlay:   #f0f0f6;
+  --bg-subtle:    #e8e8f2;
+  --bg-muted:     #dddde8;
+  --glass-bg:     rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(0, 0, 0, 0.07);
+  --glass-hover:  rgba(0, 0, 0, 0.04);
+  --border:        rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --border-accent: rgba(108, 95, 245, 0.35);
+  --text-primary:   #0d0d18;
+  --text-secondary: #52506e;
+  --text-muted:     #9896b0;
+  --text-inverse:   #f0eeff;
+  --accent:        #6c5ff5;
+  --accent-bright: #7c6ff7;
+  --accent-dim:    rgba(108, 95, 245, 0.1);
+  --accent-glow:   rgba(108, 95, 245, 0.18);
+  --alarm-critical: #dc2626;
+  --alarm-major:    #d97706;
+  --alarm-minor:    #ca8a04;
+  --alarm-warning:  #2563eb;
+  --alarm-ok:       #059669;
+  --tech-5g:  #6c5ff5;
+  --tech-4g:  #059669;
+  --tech-3g:  #d97706;
+  --tech-2g:  #2563eb;
+  --tech-b2b: #ea580c;
+  --success: #059669;
+  --danger:  #dc2626;
+  --warning: #d97706;
+  --info:    #2563eb;
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06);
 }
 ```
 
@@ -197,6 +175,8 @@ body {
 ## Theme Toggle
 
 ### Hook — `src/hooks/useTheme.ts`
+
+Dark mode is default. The hook manages a `dark`/`light` state value and toggles the `.dark` class on `<html>` — but since `.light` is not yet wired to the CSS, the toggle is currently a no-op visually. Do not build UI around it until light mode is implemented.
 
 ```ts
 import { useEffect, useState } from 'react'
@@ -223,34 +203,7 @@ export function useTheme() {
 }
 ```
 
-### Toggle Button — add to Navbar
-
-```tsx
-import { motion } from 'motion/react'
-import { useTheme } from '@/hooks/useTheme'
-
-export function ThemeToggle() {
-  const { theme, toggle } = useTheme()
-
-  return (
-    <motion.button
-      onClick={toggle}
-      whileTap={{ scale: 0.92 }}
-      className="
-        w-8 h-8 rounded-[var(--radius-md)]
-        bg-[var(--glass-bg)] border border-[var(--glass-border)]
-        flex items-center justify-center
-        text-[var(--text-secondary)] hover:text-[var(--text-primary)]
-        hover:bg-[var(--glass-hover)]
-        transition-colors duration-200
-      "
-      aria-label="Toggle theme"
-    >
-      {theme === 'dark' ? '☀' : '☾'}
-    </motion.button>
-  )
-}
-```
+> **When implementing light mode:** update `globals.css` to move the `.light` block to `.dark` (with dark values), set `:root` to light values, and the hook will work as-is since it already adds/removes `.dark`.
 
 ---
 
@@ -414,6 +367,8 @@ const shouldReduce = useReducedMotion()
 ">Label</Button>
 ```
 
+Available sizes: `xs`, `sm`, `default`, `lg`, `icon`, `icon-xs`, `icon-sm`, `icon-lg`
+
 ### Severity Badges
 
 ```tsx
@@ -457,8 +412,6 @@ const severityConfig = {
 </motion.button>
 ```
 
-### Theme Toggle — see Theme Toggle section above
-
 ---
 
 ## Map Markers
@@ -485,7 +438,7 @@ export function getMarkerColor(tech: Technology, severity: AlarmSeverity) {
 }
 ```
 
-> **Note**: Leaflet reads colors at render time. If using CSS variables for Leaflet markers, resolve them with `getComputedStyle(document.documentElement).getPropertyValue('--tech-5g').trim()` so the map respects the current theme.
+> **Leaflet marker colors:** Leaflet reads colors at render time. Resolve CSS variables with `getComputedStyle(document.documentElement).getPropertyValue('--tech-5g').trim()` so markers don't get stale values.
 
 Marker sizing:
 - Default: `radius: 7`, `strokeWidth: 2`
@@ -497,7 +450,7 @@ Marker sizing:
 ## Layout
 
 ```tsx
-<div className="flex h-screen bg-[var(--bg-base)] overflow-hidden transition-colors duration-300">
+<div className="flex h-screen bg-[var(--bg-base)] overflow-hidden">
 
   {/* Map */}
   <div className="flex-1 relative min-w-0">
@@ -534,11 +487,11 @@ Marker sizing:
 
 ---
 
-## Recharts Dark/Light Theme
+## Recharts
+
+Recharts cannot read CSS variables directly at paint time. Use the helper below and re-render on theme change.
 
 ```tsx
-// Recharts cannot read CSS variables directly at paint time.
-// Use this helper to resolve current theme colors:
 function getCSSVar(name: string) {
   return getComputedStyle(document.documentElement)
     .getPropertyValue(name).trim()
@@ -582,7 +535,7 @@ function getCSSVar(name: string) {
 </ResponsiveContainer>
 ```
 
-> **Re-render charts on theme change** — pass `theme` from `useTheme()` as a key prop to force Recharts to re-resolve colors: `<BarChart key={theme} ...>`
+> Pass `theme` from `useTheme()` as a `key` prop to force re-resolution on theme change: `<BarChart key={theme} ...>`
 
 ---
 
@@ -663,7 +616,9 @@ export default config
 
 ## shadcn/ui Setup Notes
 
-Override shadcn's default `:root` variables in `globals.css` with the variables above. Do not use shadcn's built-in light/dark theme — ours replaces it entirely.
+This project uses `style: "base-nova"` (see `components.json`), which uses `@base-ui/react` primitives instead of Radix UI. Components are otherwise installed and used the same way as standard shadcn/ui.
+
+Override shadcn's default `:root` variables in `globals.css` with the variables above. Do not use shadcn's built-in theme variables directly.
 
 ```bash
 npx shadcn@latest add button card badge tooltip dialog
@@ -683,7 +638,6 @@ npx shadcn@latest add button card badge tooltip dialog
 | Use `var(--accent)` only for interactive UI | Use purple as a general decorative color |
 | Use `getCSSVar()` in Recharts | Pass raw CSS variable strings to Recharts |
 | Use `key={theme}` on charts to re-render on theme change | Let charts show stale colors after theme switch |
-| Add `transition-colors duration-300` on layout wrappers | Let backgrounds snap instantly on theme switch |
 | Use `useReducedMotion()` to respect accessibility | Always animate regardless of user preference |
 | Use `AnimatePresence` for conditional mounts | Mount/unmount without exit animations |
 | Resolve Leaflet marker colors with `getComputedStyle` | Pass raw CSS variable strings to Leaflet |
@@ -703,12 +657,12 @@ When writing any frontend code for this project:
 7. **Stagger list entrances** — `containerVariants` + `itemVariants` pattern above
 8. **Wrap conditional renders in `AnimatePresence`**
 9. **Sidebar section order is fixed** — CellsDown → AntennaDetails → Charts → Alarms
-10. **Never use MUI for layout or spacing** — Tailwind only
+10. **Never use inline `style` for spacing or layout** — Tailwind only
 11. **Theme-aware Recharts** — always use `getCSSVar()` and `key={theme}`
 12. **Theme-aware Leaflet** — always use `getComputedStyle` to resolve marker colors
-13. **Add `transition-colors duration-300`** on all top-level layout elements
+13. **Do not wire up light mode** — `.light` CSS block exists but the toggle is not implemented yet
 14. **Check the Do/Don't table** before finalising any component
 
 ---
 
-*Telecom Outage Heat Map · Design System v2.1 · Light + Dark · 2026*
+*Telecom Outage Heat Map · Design System v2.2 · Dark Mode · 2026*
