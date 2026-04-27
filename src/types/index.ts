@@ -16,6 +16,12 @@ export interface Alarm {
   alarmTime: string
   cancelTime: string | null
   resolved: boolean
+  /** ms from alarmTime to cancelTime — null while alarm is active */
+  durationMs: number | null
+  /** ISO timestamp when a user acknowledged the alarm */
+  acknowledgedAt: string | null
+  /** UID of the user who acknowledged */
+  acknowledgedBy: string | null
 }
 
 export interface Cell {

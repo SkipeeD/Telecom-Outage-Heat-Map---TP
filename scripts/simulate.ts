@@ -6,7 +6,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
-import type { Technology, AlarmSeverity } from '../src/types'
+import type { Technology, AlarmSeverity, Cell, Alarm } from '../src/types'
 
 if (getApps().length === 0) {
   const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
@@ -24,6 +24,7 @@ const db = getFirestore()
 // ---------------------------------------------------------------------------
 
 const ONCE        = process.argv.includes('--once')
+const DRAIN       = process.argv.includes('--drain')
 const DURATION_ARG = process.argv.find(a => a.startsWith('--duration='))
 const DURATION_MS  = DURATION_ARG ? parseInt(DURATION_ARG.split('=')[1], 10) : null
 const MIN_ARG      = process.argv.find(a => a.startsWith('--min='))
@@ -31,7 +32,10 @@ const MAX_ARG      = process.argv.find(a => a.startsWith('--max='))
 
 const MIN_INTERVAL_MS  = MIN_ARG ? parseInt(MIN_ARG.split('=')[1], 10) : 60_000
 const MAX_INTERVAL_MS  = MAX_ARG ? parseInt(MAX_ARG.split('=')[1], 10) : 120_000
-const TRIGGER_PROBABILITY = 0.6
+
+// Target fraction of cells that should be in alarm at steady state.
+// When the rate is below this, trigger probability rises; above it, resolve probability rises.
+const TARGET_ALARM_RATE = 0.10
 
 const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7', 'USER8']
 
@@ -119,14 +123,14 @@ function toPriority(severity: AlarmSeverity): string {
 
 interface CachedSite {
   siteId: string
-  cells:  any[]
+  cells:  Cell[]
 }
 
 // antennaId → site data
 const topologyCache = new Map<string, CachedSite>()
 
 // alarmId → alarm data
-const activeAlarms = new Map<string, any>()
+const activeAlarms = new Map<string, Alarm>()
 
 // alarmId → incidentId (so we never need to query incidents during resolve)
 const alarmToIncident = new Map<string, string>()
@@ -138,14 +142,14 @@ async function initCaches() {
   const topSnap = await db.collection('topology').get()
   for (const doc of topSnap.docs) {
     const d = doc.data()
-    topologyCache.set(doc.id, { siteId: d.siteId, cells: d.cells })
+    topologyCache.set(doc.id, { siteId: d.siteId, cells: d.cells as Cell[] })
   }
   console.log(`[simulate] Topology cache loaded — ${topologyCache.size} sites`)
 
   // Load active alarms
   const alarmSnap = await db.collection('alarms').where('resolved', '==', false).get()
   for (const doc of alarmSnap.docs) {
-    activeAlarms.set(doc.id, doc.data())
+    activeAlarms.set(doc.id, { id: doc.id, ...doc.data() } as Alarm)
   }
   console.log(`[simulate] Active alarms loaded — ${activeAlarms.size} alarms`)
 
@@ -172,7 +176,7 @@ async function triggerAlarm() {
   const eligible: {
     antennaId: string
     siteId:    string
-    cells:     any[]
+    cells:     Cell[]
     cellIndex: number
     tech:      Technology
   }[] = []
@@ -196,17 +200,21 @@ async function triggerAlarm() {
   const alarmId   = `${pick.antennaId}-${pick.tech.toLowerCase()}-alarm-active`
   const alarmTime = new Date().toISOString()
 
-  const alarm = {
-    antennaId:   pick.antennaId,
-    siteId:      pick.siteId,
-    technology:  pick.tech,
-    alarmNumber: template.alarmNumber,
+  const alarm: Alarm = {
+    id:              alarmId,
+    antennaId:       pick.antennaId,
+    siteId:          pick.siteId,
+    technology:      pick.tech,
+    alarmNumber:     template.alarmNumber,
     severity,
-    text:        template.text,
-    alarmStatus: 1,
+    text:            template.text,
+    alarmStatus:     1,
     alarmTime,
-    cancelTime:  null,
-    resolved:    false,
+    cancelTime:      null,
+    resolved:        false,
+    durationMs:      null,
+    acknowledgedAt:  null,
+    acknowledgedBy:  null,
   }
 
   const updatedCells = [...pick.cells]
@@ -219,8 +227,10 @@ async function triggerAlarm() {
   const incidentId = nextIncidentId()
   const assignee   = ASSIGNEES[Math.floor(Math.random() * ASSIGNEES.length)]
 
+  const { id: _id, ...alarmDoc } = alarm
+
   const batch = db.batch()
-  batch.set(db.collection('alarms').doc(alarmId), alarm)
+  batch.set(db.collection('alarms').doc(alarmId), alarmDoc)
   batch.update(db.collection('topology').doc(pick.antennaId), { cells: updatedCells })
   batch.set(db.collection('incidents').doc(incidentId), {
     incidentNumber: incidentId,
@@ -262,16 +272,18 @@ async function resolveAlarm() {
   const site = topologyCache.get(alarm.antennaId)
   if (!site) return
 
-  const updatedCells = site.cells.map((cell: any) =>
+  const updatedCells = site.cells.map((cell: Cell) =>
     cell.technology === alarm.technology
-      ? { technology: cell.technology, status: 'ok' }
+      ? { technology: cell.technology, status: 'ok' as const }
       : cell
   )
 
   const incidentId = alarmToIncident.get(alarmId)
 
+  const durationMs = new Date(cancelTime).getTime() - new Date(alarm.alarmTime).getTime()
+
   const batch = db.batch()
-  batch.update(db.collection('alarms').doc(alarmId), { resolved: true, alarmStatus: 0, cancelTime })
+  batch.update(db.collection('alarms').doc(alarmId), { resolved: true, alarmStatus: 0, cancelTime, durationMs })
   batch.update(db.collection('topology').doc(alarm.antennaId), { cells: updatedCells })
   if (incidentId) {
     batch.update(db.collection('incidents').doc(incidentId), {
@@ -296,7 +308,14 @@ async function resolveAlarm() {
 
 async function tick() {
   try {
-    if (Math.random() < TRIGGER_PROBABILITY) {
+    // Dynamic trigger probability: rises when few alarms exist, falls when many do.
+    // Produces a realistic steady state around TARGET_ALARM_RATE of cells in alarm.
+    const totalCells = [...topologyCache.values()].reduce((sum, s) => sum + s.cells.length, 0)
+    const alarmRate  = totalCells > 0 ? activeAlarms.size / totalCells : 0
+    // Linear interpolation: 0.9 when alarm-free, 0.5 at target, 0.1 when 2× target
+    const triggerProb = Math.max(0.1, Math.min(0.9, 0.5 + (TARGET_ALARM_RATE - alarmRate) * 5))
+
+    if (Math.random() < triggerProb) {
       await triggerAlarm()
     } else {
       await resolveAlarm()
@@ -323,17 +342,27 @@ let startedAt = 0
 async function run() {
   startedAt = Date.now()
 
-  if (ONCE) {
+  if (DRAIN) {
+    console.log('[simulate] Drain mode — resolving excess alarms down to target rate')
+  } else if (ONCE) {
     console.log('[simulate] Running single tick (--once mode)')
   } else {
     console.log('[simulate] Alarm simulation starting — normal mode')
-    console.log(`[simulate] Interval: ${MIN_INTERVAL_MS / 1000}–${MAX_INTERVAL_MS / 1000}s | Trigger: ${TRIGGER_PROBABILITY * 100}% / Resolve: ${(1 - TRIGGER_PROBABILITY) * 100}%\n`)
+    console.log(`[simulate] Interval: ${MIN_INTERVAL_MS / 1000}–${MAX_INTERVAL_MS / 1000}s | Target alarm rate: ${TARGET_ALARM_RATE * 100}%\n`)
     if (DURATION_MS) console.log(`[simulate] Will exit after ${DURATION_MS / 1000}s\n`)
   }
 
   await initCaches()
 
-  if (ONCE) {
+  if (DRAIN) {
+    const totalCells = [...topologyCache.values()].reduce((sum, s) => sum + s.cells.length, 0)
+    const target = Math.floor(totalCells * TARGET_ALARM_RATE)
+    console.log(`[simulate] ${activeAlarms.size} active alarms / ${totalCells} cells — draining to ${target}\n`)
+    while (activeAlarms.size > target) {
+      await resolveAlarm()
+    }
+    console.log(`[simulate] Drain complete — ${activeAlarms.size} alarms remaining`)
+  } else if (ONCE) {
     await tick()
   } else {
     setTimeout(tick, 5_000)
