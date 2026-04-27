@@ -221,7 +221,7 @@ async function triggerAlarm() {
   updatedCells[pick.cellIndex] = {
     technology:   pick.tech,
     status:       severity,
-    currentAlarm: { id: alarmId, ...alarm },
+    currentAlarm: alarm,
   }
 
   const incidentId = nextIncidentId()
