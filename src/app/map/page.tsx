@@ -50,7 +50,7 @@ export default function MapPage() {
       setAntennas(data)
       
       const newCounts: Record<FilterSeverity, number> = {
-        all: data.length,
+        all: 0,
         critical: 0,
         major: 0,
         minor: 0,
@@ -62,6 +62,10 @@ export default function MapPage() {
         const status = getWorstStatus(antenna)
         if (newCounts[status] !== undefined) {
           newCounts[status]++
+        }
+        // 'all' now only shows sites with alarms
+        if (status !== 'ok') {
+          newCounts.all++
         }
       })
       
@@ -91,7 +95,9 @@ export default function MapPage() {
   if (authLoading) return null
 
   const activeFilters = {
-    severities: selectedSeverity === 'all' ? [] : [selectedSeverity as AlarmSeverity]
+    severities: selectedSeverity === 'all' 
+      ? ['critical', 'major', 'minor', 'warning'] as AlarmSeverity[]
+      : [selectedSeverity as AlarmSeverity]
   }
 
   return (
