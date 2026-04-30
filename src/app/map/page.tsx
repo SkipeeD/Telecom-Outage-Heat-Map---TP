@@ -134,6 +134,7 @@ export default function MapPage() {
           activeFilters={activeFilters}
           onAntennaClick={handleAntennaClick}
         />
+
       </motion.div>
 
       {popupAntenna && (
