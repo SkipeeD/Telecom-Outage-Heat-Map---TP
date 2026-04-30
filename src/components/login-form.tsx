@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input"
 import Link from "next/link"
 import { motion } from "motion/react"
 
+const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
+
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
@@ -29,7 +31,7 @@ const itemVariants = {
   hidden: { opacity: 0, y: 12, filter: 'blur(4px)' },
   visible: { 
     opacity: 1, y: 0, filter: 'blur(0px)',
-    transition: { duration: 0.4, ease: [0.4, 0, 0.2, 1] as [number, number, number, number] }
+    transition: { duration: 0.4, ease: EASE }
   }
 }
 

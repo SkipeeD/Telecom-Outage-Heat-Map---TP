@@ -15,6 +15,8 @@ import { Activity, ShieldAlert, CheckCircle2, Zap, SignalHigh, Globe, Download, 
 import { TECHS, sevColorVar, techColorVar, relTime } from '@/lib/antenna-helpers'
 import { Button } from '@/components/ui/button'
 
+const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
+
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
@@ -27,7 +29,7 @@ const itemVariants = {
   hidden: { opacity: 0, y: 16, filter: 'blur(8px)' },
   visible: { 
     opacity: 1, y: 0, filter: 'blur(0px)',
-    transition: { duration: 0.45, ease: [0.4, 0, 0.2, 1] }
+    transition: { duration: 0.45, ease: EASE }
   }
 }
 
@@ -79,7 +81,7 @@ export default function DashboardPage() {
       ok: 0
     }
     const techCount: Record<Technology, number> = {
-      '2G': 0, '3G': 0, '4G': 0, '5G': 0, 'B2B': 0
+      '2G': 0, '3G': 0, '4G': 0, '5G': 0, '6G': 0
     }
 
     antennas.forEach(a => {

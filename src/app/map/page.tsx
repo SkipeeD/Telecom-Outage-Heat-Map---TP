@@ -1,5 +1,7 @@
 'use client'
 
+const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
+
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { motion } from 'motion/react'
@@ -108,7 +110,7 @@ export default function MapPage() {
         className="flex-1 relative min-w-0"
         initial={{ opacity: 0, filter: 'blur(4px)' }}
         animate={{ opacity: 1, filter: 'blur(0px)' }}
-        transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
+        transition={{ duration: 0.45, ease: EASE }}
       >
         <MapClient
           antennas={antennas}
