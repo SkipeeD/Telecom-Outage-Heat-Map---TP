@@ -77,14 +77,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Set auth session cookie
         document.cookie = `auth-session=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
         
-        // Immediate redirect to map if on a public page
+        // Immediate redirect to dashboard if on a public page
         if (isPublicRoute) {
-          router.replace('/map')
+          router.replace('/dashboard')
           // If the router is stuck, force with window
           setTimeout(() => {
             const currentPath = window.location.pathname
             if (['/login', '/register', '/verify-email'].includes(currentPath)) {
-              window.location.href = '/map'
+              window.location.href = '/dashboard'
             }
           }, 800)
         }

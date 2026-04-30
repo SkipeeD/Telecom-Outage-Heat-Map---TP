@@ -22,6 +22,30 @@ export async function getAlarmsForAntenna(antennaId: string): Promise<Alarm[]> {
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Alarm))
 }
 
+export async function getResolvedAlarms(): Promise<Alarm[]> {
+  const q = query(
+    collection(db, 'alarms'),
+    where('resolved', '==', true)
+  )
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Alarm))
+}
+
+export function subscribeToResolvedAlarms(
+  callback: (alarms: Alarm[]) => void
+): () => void {
+  const q = query(
+    collection(db, 'alarms'),
+    where('resolved', '==', true)
+  )
+  return onSnapshot(q, (snapshot) => {
+    const alarms = snapshot.docs.map(
+      (doc) => ({ id: doc.id, ...doc.data() } as Alarm)
+    )
+    callback(alarms)
+  })
+}
+
 export function subscribeToAntennas(
   callback: (antennas: Antenna[]) => void
 ): () => void {
