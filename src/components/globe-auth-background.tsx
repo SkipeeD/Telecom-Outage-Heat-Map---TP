@@ -83,7 +83,7 @@ export function GlobeAuthBackground() {
             text={[
               "Live antenna alarm monitoring",
               "Critical · Major · Minor · Warning",
-              "5G · 4G · 3G · 2G · B2B coverage",
+              "6G · 5G · 4G · 3G · 2G coverage",
               "Firestore real-time sync",
               "Romania network outage map",
               "Weather risk zone detection",

@@ -34,7 +34,7 @@ const config: Config = {
           '4g':  'var(--tech-4g)',
           '3g':  'var(--tech-3g)',
           '2g':  'var(--tech-2g)',
-          'b2b': 'var(--tech-b2b)',
+          '6g': 'var(--tech-6g)',
         },
         border: {
           DEFAULT: 'var(--border)',
