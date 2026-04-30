@@ -33,7 +33,7 @@ interface Props {
   open: boolean
   onClose: () => void
   onAcknowledge?: (antenna: Antenna) => void
-  onOpenDetails?: (antenna: Antenna) => void
+  onOpenDetails?: (antenna: Antenna, tech: Technology) => void
 }
 
 export function AntennaPopup({
@@ -317,18 +317,20 @@ export function AntennaPopup({
               </svg>
               {acknowledged ? 'Acknowledged' : 'Acknowledge'}
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => onOpenDetails?.(antenna)}
-              className="
-                text-[12px] rounded-[var(--radius-md)]
-                bg-[var(--glass-bg)] hover:bg-[var(--glass-hover)]
-                border-[var(--glass-border)] hover:border-[var(--border-strong)]
-                text-[var(--text-primary)]
-              "
-            >
-              Open details
-            </Button>
+            {selectedTech && (
+              <Button
+                variant="outline"
+                onClick={() => onOpenDetails?.(antenna, selectedTech)}
+                className="
+                  text-[12px] rounded-[var(--radius-md)]
+                  bg-[var(--glass-bg)] hover:bg-[var(--glass-hover)]
+                  border-[var(--glass-border)] hover:border-[var(--border-strong)]
+                  text-[var(--text-primary)]
+                "
+              >
+                Open details
+              </Button>
+            )}
           </div>
         </motion.div>
       )}

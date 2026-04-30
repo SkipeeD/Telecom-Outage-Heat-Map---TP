@@ -22,6 +22,8 @@ export interface Alarm {
   acknowledgedAt: string | null
   /** UID of the user who acknowledged */
   acknowledgedBy: string | null
+  /** Incident linked to this alarm (critical/major only) */
+  incidentId: string | null
 }
 
 export interface Cell {
@@ -34,6 +36,8 @@ export interface Incident {
   incidentNumber: string          // INC0000001 format
   submitDate: string
   alarmId: string
+  antennaId: string
+  technology: Technology
   siteId: string
   status: 'ASSIGNED' | 'IN PROGRESS' | 'RESOLVED' | 'CLOSED'
   urgency: '1-Critical' | '2-High' | '3-Medium' | '4-Low'
