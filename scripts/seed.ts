@@ -6,6 +6,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
+import type { DocumentReference } from 'firebase-admin/firestore'
 import type { Technology, AlarmSeverity } from '../src/types'
 
 if (getApps().length === 0) {
@@ -57,16 +58,9 @@ const ALARM_CATALOGUE: AlarmTemplate[] = [
   { alarmNumber: 6004,  text: 'Temperature threshold exceeded',           severity: 'warning' },
 ]
 
-// Realistic status distribution per slot (20 per city)
-// Matches real NOC data: mostly ok, some warnings, few critical
-const STATUS_SLOTS: AlarmSeverity[] = [
-  'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
-  'warning', 'warning', 'warning',
-  'minor', 'minor',
-  'major',
-  'critical',
-  'ok',
-]
+// Realistic alarm probability per cell — real NOC networks run at ~5% alarm rate.
+// More alarms than this looks like a network-wide outage.
+//   critical: 0.5%   major: 1.0%   minor: 1.5%   warning: 2.0%   ok: 95%
 
 const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7', 'USER8']
 
@@ -480,9 +474,13 @@ function siteNumber(cityIndex: number, slotIndex: number): string {
   return String((cityIndex + 1) * 1000 + slotIndex + 1).padStart(4, '0')
 }
 
-// Draw a random status from STATUS_SLOTS distribution
 function drawStatus(rng: () => number): AlarmSeverity {
-  return STATUS_SLOTS[Math.floor(rng() * STATUS_SLOTS.length)]
+  const r = rng()
+  if (r < 0.005) return 'critical'
+  if (r < 0.015) return 'major'
+  if (r < 0.030) return 'minor'
+  if (r < 0.050) return 'warning'
+  return 'ok'
 }
 
 // Pick an alarm template by severity — deterministic via slot index
@@ -513,18 +511,67 @@ function toPriority(severity: AlarmSeverity): string {
   }
 }
 
+// Historical alarm severity pool — weighted toward minor/warning (most past alarms are low severity)
+const HIST_SEVERITY_POOL: AlarmSeverity[] = [
+  'warning', 'warning', 'warning', 'warning',
+  'minor',   'minor',   'minor',
+  'major',   'major',
+  'critical',
+]
+
+// Number of resolved historical alarms to generate per cell
+const HIST_PER_CELL = 3
+
 let incidentCounter = 1
 
 function nextIncidentId(): string {
   return `INC${String(incidentCounter++).padStart(7, '0')}`
 }
 
+// Firestore batch limit is 500 ops — this helper fans out across multiple batches automatically
+class BatchWriter {
+  private batches: ReturnType<typeof db.batch>[] = []
+  private current: ReturnType<typeof db.batch>
+  private count = 0
+  private readonly LIMIT = 499
+
+  constructor() {
+    this.current = db.batch()
+    this.batches.push(this.current)
+  }
+
+  set(ref: DocumentReference, data: object) {
+    if (this.count >= this.LIMIT) {
+      this.current = db.batch()
+      this.batches.push(this.current)
+      this.count = 0
+    }
+    this.current.set(ref, data)
+    this.count++
+  }
+
+  async commitAll(label: string) {
+    let total = 0
+    for (const batch of this.batches) {
+      await batch.commit()
+      total += this.LIMIT
+    }
+    console.log(`${label} written (${this.batches.length} batch(es)).`)
+  }
+}
+
 async function seed() {
   console.log('Seeding Firestore...')
 
-  const topologyBatch = db.batch()
-  const alarmBatch    = db.batch()
-  const incidentBatch = db.batch()
+  const topologyWriter = new BatchWriter()
+  const alarmWriter    = new BatchWriter()
+  const incidentWriter = new BatchWriter()
+
+  let totalAlarms    = 0
+  let totalIncidents = 0
+
+  // Manifest for simulator — avoids reading full topology collection on every run
+  const manifestEntries: Array<{ antennaId: string; siteId: string; technology: Technology }> = []
 
   for (let ci = 0; ci < CITIES.length; ci++) {
     const city = CITIES[ci]
@@ -541,59 +588,78 @@ async function seed() {
       const { name: area, lat, lon } = positions[i]
 
       const antennaRef = db.collection('topology').doc(id)
-
-      // Build cells — each cell gets its own deterministic status
       const cells: object[] = []
 
       for (let ci2 = 0; ci2 < bundle.length; ci2++) {
         const tech   = bundle[ci2]
         const status = drawStatus(rng)
 
+        manifestEntries.push({ antennaId: id, siteId, technology: tech })
+
+        // ── Active alarm ──────────────────────────────────────────
         let currentAlarm: object | undefined = undefined
 
         if (status !== 'ok') {
-          const template  = pickAlarm(status, i + ci2)
-          const alarmId   = `${id}-${tech.toLowerCase()}-alarm-active`
-          const alarmRef  = db.collection('alarms').doc(alarmId)
+          const template = pickAlarm(status, i + ci2)
+          const alarmId  = `${id}-${tech.toLowerCase()}-alarm-active`
+          const alarmRef = db.collection('alarms').doc(alarmId)
 
-          const alarmTime  = new Date(Date.now() - 1000 * 60 * (30 + i * 17 + ci2 * 11)).toISOString()
-          const alarmStatus = 1
+          const alarmAgeMinutes = 30 + i * 17 + ci2 * 11
+          const alarmTime       = new Date(Date.now() - 1000 * 60 * alarmAgeMinutes).toISOString()
 
-          const alarm = {
-            antennaId:   id,
+          // Incident auto-creation rules:
+          //   critical → always
+          //   major    → only if alarm has been open > 4 h (240 min)
+          //   minor / warning → no automatic incident
+          const shouldCreateIncident =
+            status === 'critical' ||
+            (status === 'major' && alarmAgeMinutes > 240)
+
+          const linkedIncidentId = shouldCreateIncident ? nextIncidentId() : null
+
+          const alarmData = {
+            antennaId:      id,
             siteId,
-            technology:  tech,
-            alarmNumber: template.alarmNumber,
-            severity:    status,
-            text:        template.text,
-            alarmStatus,
+            technology:     tech,
+            alarmNumber:    template.alarmNumber,
+            severity:       status,
+            text:           template.text,
+            alarmStatus:    1,
             alarmTime,
-            cancelTime:  null,
-            resolved:    false,
+            cancelTime:     null,
+            resolved:       false,
+            durationMs:     null,
+            acknowledgedAt: null,
+            acknowledgedBy: null,
+            incidentId:     linkedIncidentId,
           }
 
-          alarmBatch.set(alarmRef, alarm)
-          currentAlarm = { id: alarmId, ...alarm }
+          alarmWriter.set(alarmRef, alarmData)
+          currentAlarm = { id: alarmId, ...alarmData }
+          totalAlarms++
 
-          // Linked incident
-          const incidentId     = nextIncidentId()
-          const incidentRef    = db.collection('incidents').doc(incidentId)
-          const incidentStatus = status === 'critical' ? 'IN PROGRESS' : 'ASSIGNED'
-          const assignee       = ASSIGNEES[(ci + i + ci2) % ASSIGNEES.length]
+          if (linkedIncidentId) {
+            const incidentRef    = db.collection('incidents').doc(linkedIncidentId)
+            const incidentStatus = status === 'critical' ? 'IN PROGRESS' : 'ASSIGNED'
+            const assignee       = ASSIGNEES[(ci + i + ci2) % ASSIGNEES.length]
 
-          incidentBatch.set(incidentRef, {
-            incidentNumber: incidentId,
-            submitDate:     alarmTime,
-            alarmId:        alarmId,
-            siteId,
-            status:         incidentStatus,
-            urgency:        toUrgency(status),
-            impact:         status === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
-            priority:       toPriority(status),
-            closedDate:     null,
-            assignee,
-            resolvedDate:   null,
-          })
+            incidentWriter.set(incidentRef, {
+              incidentNumber: linkedIncidentId,
+              submitDate:     alarmTime,
+              alarmId,
+              antennaId:      id,
+              technology:     tech,
+              siteId,
+              status:         incidentStatus,
+              urgency:        toUrgency(status),
+              impact:         status === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
+              priority:       toPriority(status),
+              closedDate:     null,
+              assignee,
+              resolvedDate:   null,
+            })
+            totalIncidents++
+          }
         }
 
         cells.push({
@@ -601,9 +667,41 @@ async function seed() {
           status,
           ...(currentAlarm ? { currentAlarm } : {}),
         })
+
+        // ── Historical resolved alarms ────────────────────────────
+        for (let h = 0; h < HIST_PER_CELL; h++) {
+          const histSev      = HIST_SEVERITY_POOL[Math.floor(rng() * HIST_SEVERITY_POOL.length)]
+          const histTemplate = pickAlarm(histSev, i + ci2 + h * 7)
+          const histAlarmId  = `${id}-${tech.toLowerCase()}-alarm-h${h}`
+          const histAlarmRef = db.collection('alarms').doc(histAlarmId)
+
+          // Spread historical alarms over past 1-30 days
+          const daysAgo         = 1 + h * 4 + Math.floor(rng() * 8)
+          const histAgeMs       = daysAgo * 24 * 60 * 60 * 1000
+          const histDurationMs  = Math.floor(rng() * 8 * 60 * 60 * 1000) + 30 * 60 * 1000
+          const histAlarmTime   = new Date(Date.now() - histAgeMs).toISOString()
+          const histCancelTime  = new Date(Date.now() - histAgeMs + histDurationMs).toISOString()
+
+          alarmWriter.set(histAlarmRef, {
+            antennaId:       id,
+            siteId,
+            technology:      tech,
+            alarmNumber:     histTemplate.alarmNumber,
+            severity:        histSev,
+            text:            histTemplate.text,
+            alarmStatus:     0,
+            alarmTime:       histAlarmTime,
+            cancelTime:      histCancelTime,
+            resolved:        true,
+            durationMs:      histDurationMs,
+            acknowledgedAt:  null,
+            acknowledgedBy:  null,
+          })
+          totalAlarms++
+        }
       }
 
-      topologyBatch.set(antennaRef, {
+      topologyWriter.set(antennaRef, {
         name:      `${city.name} ${area}`,
         siteId,
         provider,
@@ -614,17 +712,16 @@ async function seed() {
     }
   }
 
-  await topologyBatch.commit()
-  console.log('Topology written.')
+  await topologyWriter.commitAll('Topology')
+  await alarmWriter.commitAll('Alarms')
+  await incidentWriter.commitAll('Incidents')
 
-  await alarmBatch.commit()
-  console.log('Alarms written.')
-
-  await incidentBatch.commit()
-  console.log('Incidents written.')
+  // Write simulator manifest — 1 doc read per run vs 282 topology reads
+  await db.collection('config').doc('cells').set({ entries: manifestEntries })
+  console.log(`Config/cells manifest written — ${manifestEntries.length} cell entries.`)
 
   const total = CITIES.reduce((sum, c) => sum + c.antennaCount, 0)
-  console.log(`Done — seeded ${total} topology sites, ${incidentCounter - 1} incidents across ${CITIES.length} cities.`)
+  console.log(`Done — ${total} sites · ${totalAlarms} alarms · ${totalIncidents} incidents across ${CITIES.length} cities.`)
 }
 
 seed().catch((err) => {

@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "incidents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "antennaId",  "order": "ASCENDING" },
+        { "fieldPath": "technology", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "alarms",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "antennaId",  "order": "ASCENDING" },
+        { "fieldPath": "technology", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
