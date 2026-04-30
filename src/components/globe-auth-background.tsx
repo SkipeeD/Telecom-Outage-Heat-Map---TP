@@ -1,5 +1,7 @@
 "use client"
 
+const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
+
 import { motion } from "motion/react"
 import { useEffect, useState } from "react"
 import { GlobePulse, type PulseMarker } from "@/components/ui/cobe-globe-pulse"
@@ -66,7 +68,7 @@ export function GlobeAuthBackground() {
         className="w-full max-w-[520px] px-8 -translate-y-10"
         initial={{ opacity: 0, scale: 0.92, filter: "blur(12px)" }}
         animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-        transition={{ duration: 1.2, ease: [0.4, 0, 0.2, 1] }}
+        transition={{ duration: 1.2, ease: EASE }}
       >
         <GlobePulse markers={markers} />
       </motion.div>
