@@ -89,8 +89,8 @@ const CELL_BUNDLES: Technology[][] = [
   ['4G', '5G'],                // Compact modern site
   ['4G', '5G'],
   ['4G', '5G'],
-  ['B2B'],                     // Dedicated B2B site
-  ['B2B'],
+  ['6G'],                      // Dedicated 6G site
+  ['6G'],
   ['2G', '4G', '5G'],          // 3G decommissioned
   ['3G', '4G'],                // Mid-tier site
   ['2G', '3G', '4G', '5G'],

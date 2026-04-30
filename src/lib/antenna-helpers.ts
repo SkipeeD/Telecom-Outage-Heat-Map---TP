@@ -1,6 +1,6 @@
 import type { AlarmSeverity, Cell, Technology } from '@/types'
 
-export const TECHS: Technology[] = ['2G', '3G', '4G', '5G', 'B2B']
+export const TECHS: Technology[] = ['2G', '3G', '4G', '5G', '6G']
 
 const SEV_ORDER: AlarmSeverity[] = ['critical', 'major', 'minor', 'warning', 'ok']
 
@@ -9,7 +9,7 @@ export const techColorVar: Record<Technology, string> = {
   '3G':  '--tech-3g',
   '4G':  '--tech-4g',
   '5G':  '--tech-5g',
-  'B2B': '--tech-b2b',
+  '6G': '--tech-6g',
 }
 
 export const sevColorVar: Record<AlarmSeverity, string> = {

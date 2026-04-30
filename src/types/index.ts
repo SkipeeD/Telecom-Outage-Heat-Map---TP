@@ -1,4 +1,4 @@
-export type Technology = '2G' | '3G' | '4G' | '5G' | 'B2B'
+export type Technology = '2G' | '3G' | '4G' | '5G' | '6G'
 
 export type AlarmSeverity = 'critical' | 'major' | 'minor' | 'warning' | 'ok'
 
