@@ -6,6 +6,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   const publicRoutes = ['/login', '/register']
+  const authOnlyRoutes = ['/admin', '/dashboard', '/map']
   const isPublicRoute = publicRoutes.includes(pathname)
 
   // Allow verify-email for everyone

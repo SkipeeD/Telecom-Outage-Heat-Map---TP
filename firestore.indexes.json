@@ -15,6 +15,14 @@
         { "fieldPath": "antennaId",  "order": "ASCENDING" },
         { "fieldPath": "technology", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "alarms",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resolved",   "order": "ASCENDING" },
+        { "fieldPath": "durationMs", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

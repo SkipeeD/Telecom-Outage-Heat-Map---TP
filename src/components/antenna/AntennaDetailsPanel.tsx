@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import type { Alarm, AlarmSeverity, Antenna, Cell, Incident, Technology } from '@/types'
+import type { Alarm, AlarmSeverity, Antenna, Cell, Incident, IncidentAssignee, Technology, UserProfile } from '@/types'
 import {
   TECHS,
   relTime,
@@ -13,7 +13,9 @@ import {
 } from '@/lib/antenna-helpers'
 import { SeverityBadge } from './SeverityBadge'
 import { Button } from '@/components/ui/button'
-import { createIncidentForAlarm, getAlarmsForAntennaCell, getIncidentsForCell } from '@/lib/firestore'
+import { createIncidentForAlarm, getAlarmsForAntennaCell, getEngineers, getIncidentsForCell, updateIncidentAssignees } from '@/lib/firestore'
+import { useAuth } from '@/components/AuthProvider'
+import { canAcknowledgeAlarm, canAssignEngineers, canCreateIncident } from '@/lib/roles'
 
 // Evaluated once at module load — safe to use in render (avoids react-hooks/purity violation)
 const MODULE_NOW_MS = Date.now()
@@ -49,10 +51,14 @@ interface Props {
 
 type Tab = 'overview' | 'alarms' | 'incidents'
 type SevFilter = 'ALL' | AlarmSeverity
-type IncFilter = 'ALL' | 'IN PROGRESS' | 'ASSIGNED' | 'RESOLVED' | 'CLOSED'
+type IncFilter = 'ALL' | 'MINE' | 'IN PROGRESS' | 'ASSIGNED' | 'RESOLVED' | 'CLOSED'
 
 export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Props) {
   const shouldReduce = useReducedMotion()
+  const { profile } = useAuth()
+  const canAck    = canAcknowledgeAlarm(profile?.role)
+  const canInc    = canCreateIncident(profile?.role)
+  const canAssign = canAssignEngineers(profile?.role)
 
   const [activeTech, setActiveTech]         = useState<Technology>(initialTech)
   const [tab, setTab]                       = useState<Tab>('overview')
@@ -131,9 +137,16 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
   })
 
   const filteredIncidents = incidents.filter(i => {
-    if (incFilter === 'ALL') return true
+    if (incFilter === 'ALL')  return true
+    if (incFilter === 'MINE') return (i.assignees ?? []).some(a => a.uid === profile?.uid)
     return i.status === incFilter
   })
+
+  async function handleUpdateAssignees(incidentNumber: string, assignees: IncidentAssignee[]) {
+    await updateIncidentAssignees(incidentNumber, assignees)
+    const updated = await getIncidentsForCell(antenna.id, activeTech)
+    setIncidents(updated)
+  }
 
   const panelVariants = shouldReduce
     ? {}
@@ -353,6 +366,9 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
                   filteredIncidents={filteredIncidents}
                   incFilter={incFilter}
                   setIncFilter={setIncFilter}
+                  profile={profile}
+                  canAssign={canAssign}
+                  onUpdateAssignees={handleUpdateAssignees}
                 />
               )}
             </div>
@@ -360,10 +376,13 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
             {/* ── Footer ───────────────────────────────────────────── */}
             <div className="shrink-0 flex gap-2 px-6 py-3 border-t border-[var(--glass-border)] bg-black/15">
               <Button
-                onClick={() => setAcknowledged(true)}
+                onClick={() => canAck && setAcknowledged(true)}
+                disabled={!canAck}
+                title={!canAck ? 'Engineers and admins only' : undefined}
                 className={`
                   flex-1 justify-center gap-1.5 text-[13px] font-medium
                   rounded-[var(--radius-md)] transition-all duration-200
+                  disabled:opacity-40 disabled:cursor-not-allowed
                   ${acknowledged
                     ? 'bg-[var(--alarm-ok)] hover:bg-[var(--alarm-ok)] text-[var(--text-inverse)]'
                     : 'bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white shadow-[var(--shadow-glow)]'}
@@ -376,7 +395,8 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
               </Button>
               <Button
                 variant="outline"
-                disabled={!cell?.currentAlarm || creatingIncident || !!incidentCreated}
+                disabled={!canInc || !cell?.currentAlarm || creatingIncident || !!incidentCreated}
+                title={!canInc ? 'Engineers and admins only' : undefined}
                 onClick={handleCreateIncident}
                 className="
                   text-[13px] rounded-[var(--radius-md)]
@@ -640,7 +660,7 @@ function AlarmsTab({ cell, alarmHistory, loading, filteredAlarms, sevFilter, set
 }
 
 /* ─── Incidents Tab ─── */
-const INC_FILTERS: IncFilter[] = ['ALL', 'IN PROGRESS', 'ASSIGNED', 'RESOLVED', 'CLOSED']
+const STATUS_FILTERS: IncFilter[] = ['ALL', 'IN PROGRESS', 'ASSIGNED', 'RESOLVED', 'CLOSED']
 
 interface IncidentsTabProps {
   incidents: Incident[]
@@ -648,16 +668,59 @@ interface IncidentsTabProps {
   filteredIncidents: Incident[]
   incFilter: IncFilter
   setIncFilter: (f: IncFilter) => void
+  profile: UserProfile | null
+  canAssign: boolean
+  onUpdateAssignees: (incidentNumber: string, assignees: IncidentAssignee[]) => Promise<void>
 }
 
-function IncidentsTab({ incidents, loading, filteredIncidents, incFilter, setIncFilter }: IncidentsTabProps) {
+function IncidentsTab({
+  incidents, loading, filteredIncidents, incFilter, setIncFilter,
+  profile, canAssign, onUpdateAssignees,
+}: IncidentsTabProps) {
+  const isEngineerOrAdmin = profile?.role === 'engineer' || profile?.role === 'admin'
+
+  const [managingInc, setManagingInc]       = useState<string | null>(null)
+  const [engineers, setEngineers]           = useState<UserProfile[] | null>(null)
+  const [loadingEng, setLoadingEng]         = useState(false)
+  const [pendingUids, setPendingUids]       = useState<Set<string>>(new Set())
+  const [saving, setSaving]                 = useState(false)
+
+  async function openAssign(inc: Incident) {
+    setManagingInc(inc.incidentNumber)
+    setPendingUids(new Set((inc.assignees ?? []).map(a => a.uid)))
+    if (!engineers) {
+      setLoadingEng(true)
+      try { setEngineers(await getEngineers()) }
+      finally { setLoadingEng(false) }
+    }
+  }
+
+  async function saveAssignees(inc: Incident) {
+    if (!engineers) return
+    setSaving(true)
+    try {
+      const next = engineers
+        .filter(e => pendingUids.has(e.uid))
+        .map(e => ({ uid: e.uid, email: e.email, ...(e.displayName ? { displayName: e.displayName } : {}) }))
+      await onUpdateAssignees(inc.incidentNumber, next)
+      setManagingInc(null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const allFilters: IncFilter[] = isEngineerOrAdmin
+    ? ['ALL', 'MINE', ...STATUS_FILTERS.slice(1)]
+    : STATUS_FILTERS
+
   return (
     <div className="flex flex-col gap-4">
       {/* Filter row */}
       <div className="flex gap-1.5 flex-wrap">
-        {INC_FILTERS.map(f => {
+        {allFilters.map(f => {
           const isActive = incFilter === f
-          const color = INC_STATUS_COLOR[f]
+          const color    = INC_STATUS_COLOR[f]
+          const isMine   = f === 'MINE'
           return (
             <motion.button
               key={f}
@@ -665,12 +728,10 @@ function IncidentsTab({ incidents, loading, filteredIncidents, incFilter, setInc
               onClick={() => setIncFilter(f)}
               className="text-[11px] font-medium uppercase tracking-widest px-3 py-1.5 rounded-[var(--radius-md)] border transition-all duration-150 cursor-pointer"
               style={
-                isActive && color
-                  ? {
-                      background: `color-mix(in srgb, ${color} 12%, transparent)`,
-                      borderColor: `color-mix(in srgb, ${color} 30%, transparent)`,
-                      color,
-                    }
+                isActive && isMine
+                  ? { background: 'var(--accent-dim)', borderColor: 'var(--border-accent)', color: 'var(--accent-bright)' }
+                  : isActive && color
+                  ? { background: `color-mix(in srgb, ${color} 12%, transparent)`, borderColor: `color-mix(in srgb, ${color} 30%, transparent)`, color }
                   : isActive
                   ? { background: 'var(--accent-dim)', borderColor: 'var(--border-accent)', color: 'var(--accent-bright)' }
                   : { background: 'var(--glass-bg)', borderColor: 'var(--glass-border)', color: 'var(--text-secondary)' }
@@ -699,39 +760,201 @@ function IncidentsTab({ incidents, loading, filteredIncidents, incFilter, setInc
           {filteredIncidents.map(inc => {
             const statusColor   = INC_STATUS_COLOR[inc.status] ?? 'var(--text-muted)'
             const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
+            const assignees     = inc.assignees ?? []
+            const isManaging    = managingInc === inc.incidentNumber
+            const iAmAssigned   = assignees.some(a => a.uid === profile?.uid)
+
             return (
               <div
                 key={inc.incidentNumber}
-                className="rounded-[var(--radius-md)] p-3"
+                className="rounded-[var(--radius-md)] overflow-hidden"
                 style={{
                   background: 'var(--glass-bg)',
                   border: '1px solid var(--glass-border)',
                   borderLeft: `2px solid ${statusColor}`,
                 }}
               >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-mono text-[12px] font-bold text-[var(--text-primary)]">
-                    {inc.incidentNumber}
-                  </span>
-                  <span
-                    className="font-mono text-[9px] font-medium uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-full)]"
-                    style={{
-                      color: statusColor,
-                      background: `color-mix(in srgb, ${statusColor} 12%, transparent)`,
-                      border: `1px solid color-mix(in srgb, ${statusColor} 28%, transparent)`,
-                    }}
-                  >
-                    {inc.status}
-                  </span>
+                {/* Main card content */}
+                <div className="p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[12px] font-bold text-[var(--text-primary)]">
+                        {inc.incidentNumber}
+                      </span>
+                      {iAmAssigned && (
+                        <span
+                          className="font-mono text-[8px] font-medium uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-full)]"
+                          style={{
+                            color: 'var(--accent-bright)',
+                            background: 'var(--accent-dim)',
+                            border: '1px solid var(--border-accent)',
+                          }}
+                        >
+                          You
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className="font-mono text-[9px] font-medium uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-full)]"
+                      style={{
+                        color: statusColor,
+                        background: `color-mix(in srgb, ${statusColor} 12%, transparent)`,
+                        border: `1px solid color-mix(in srgb, ${statusColor} 28%, transparent)`,
+                      }}
+                    >
+                      {inc.status}
+                    </span>
+                  </div>
+
+                  <p className="text-[13px] text-[var(--text-secondary)] mb-2 leading-snug">
+                    {inc.impact}
+                  </p>
+
+                  <div className="flex items-center gap-3 text-[11px] font-mono">
+                    <span className="text-[var(--text-muted)]">{relTime(inc.submitDate)}</span>
+                    <span style={{ color: priorityColor }}>{inc.priority}</span>
+                  </div>
+
+                  {/* Assignee strip */}
+                  <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-[var(--glass-border)]">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      {assignees.length === 0 ? (
+                        <span className="text-[10px] font-mono text-[var(--text-muted)] italic">
+                          No engineers assigned
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {assignees.slice(0, 3).map(a => {
+                            const isMe = a.uid === profile?.uid
+                            const label = a.displayName ?? a.email.split('@')[0]
+                            const initials = label.slice(0, 2).toUpperCase()
+                            return (
+                              <span
+                                key={a.uid}
+                                title={a.email}
+                                className="flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 rounded-[var(--radius-full)]"
+                                style={{
+                                  color: isMe ? 'var(--accent-bright)' : 'var(--text-secondary)',
+                                  background: isMe ? 'var(--accent-dim)' : 'var(--bg-subtle)',
+                                  border: `1px solid ${isMe ? 'var(--border-accent)' : 'var(--glass-border)'}`,
+                                }}
+                              >
+                                <span className="font-bold">{initials}</span>
+                                <span className="max-w-[80px] truncate">{label}</span>
+                              </span>
+                            )
+                          })}
+                          {assignees.length > 3 && (
+                            <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                              +{assignees.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {canAssign && (
+                      <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => isManaging ? setManagingInc(null) : openAssign(inc)}
+                        className="shrink-0 text-[10px] font-medium uppercase tracking-widest px-2.5 py-1 rounded-[var(--radius-md)] border transition-colors duration-150 cursor-pointer ml-2"
+                        style={
+                          isManaging
+                            ? { background: 'var(--accent-dim)', borderColor: 'var(--border-accent)', color: 'var(--accent-bright)' }
+                            : { background: 'var(--glass-bg)', borderColor: 'var(--glass-border)', color: 'var(--text-secondary)' }
+                        }
+                      >
+                        {isManaging ? 'Cancel' : 'Assign'}
+                      </motion.button>
+                    )}
+                  </div>
                 </div>
-                <p className="text-[13px] text-[var(--text-secondary)] mb-2 leading-snug">
-                  {inc.impact}
-                </p>
-                <div className="flex items-center gap-3 text-[11px] font-mono">
-                  <span className="text-[var(--text-muted)]">{relTime(inc.submitDate)}</span>
-                  <span style={{ color: priorityColor }}>{inc.priority}</span>
-                  <span className="ml-auto text-[var(--text-muted)]">{inc.assignee}</span>
-                </div>
+
+                {/* Inline engineer picker (admin only) */}
+                <AnimatePresence>
+                  {isManaging && (
+                    <motion.div
+                      key="picker"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                      className="overflow-hidden border-t border-[var(--glass-border)]"
+                    >
+                      <div className="px-3 py-3 flex flex-col gap-2" style={{ background: 'rgba(0,0,0,0.15)' }}>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                          Select engineers
+                        </span>
+
+                        {loadingEng && <LoadingRow />}
+
+                        {!loadingEng && engineers && engineers.length === 0 && (
+                          <span className="text-[12px] text-[var(--text-muted)] italic">
+                            No engineers found. Promote users first.
+                          </span>
+                        )}
+
+                        {!loadingEng && engineers && engineers.length > 0 && (
+                          <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
+                            {engineers.map(eng => {
+                              const checked = pendingUids.has(eng.uid)
+                              const label   = eng.displayName ?? eng.email.split('@')[0]
+                              return (
+                                <label
+                                  key={eng.uid}
+                                  className="flex items-center gap-2.5 px-2 py-1.5 rounded-[var(--radius-md)] cursor-pointer transition-colors duration-150 hover:bg-[var(--glass-hover)]"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={e => {
+                                      const next = new Set(pendingUids)
+                                      e.target.checked ? next.add(eng.uid) : next.delete(eng.uid)
+                                      setPendingUids(next)
+                                    }}
+                                    className="w-3.5 h-3.5 accent-[var(--accent)]"
+                                  />
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-[12px] text-[var(--text-primary)] truncate">{label}</span>
+                                    <span className="text-[10px] font-mono text-[var(--text-muted)] truncate">{eng.email}</span>
+                                  </div>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 mt-1">
+                          <Button
+                            size="sm"
+                            disabled={saving || loadingEng}
+                            onClick={() => saveAssignees(inc)}
+                            className="
+                              flex-1 h-7 text-[11px] font-medium uppercase tracking-widest
+                              bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white
+                              rounded-[var(--radius-md)] disabled:opacity-50
+                            "
+                          >
+                            {saving ? 'Saving…' : 'Save'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setManagingInc(null)}
+                            className="
+                              h-7 text-[11px] font-medium uppercase tracking-widest
+                              bg-[var(--glass-bg)] border-[var(--glass-border)]
+                              hover:bg-[var(--glass-hover)] hover:border-[var(--border-strong)]
+                              text-[var(--text-secondary)] rounded-[var(--radius-md)]
+                            "
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )
           })}

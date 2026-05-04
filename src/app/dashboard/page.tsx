@@ -6,13 +6,13 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area
 } from 'recharts'
-import { subscribeToAntennas, subscribeToResolvedAlarms } from '@/lib/firestore'
+import { subscribeToAntennas, subscribeToResolvedAlarms, subscribeToLongLivedAlarms } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, AlarmSeverity, Technology, Alarm } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Activity, ShieldAlert, CheckCircle2, Zap, SignalHigh, Globe, Download, Clock, History } from 'lucide-react'
-import { TECHS, sevColorVar, techColorVar, relTime } from '@/lib/antenna-helpers'
+import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
 import { Button } from '@/components/ui/button'
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
@@ -58,14 +58,17 @@ export default function DashboardPage() {
   const { theme } = useTheme()
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
+  const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
 
   useEffect(() => {
     if (!user) return
     const unsubAntennas = subscribeToAntennas(setAntennas)
     const unsubResolved = subscribeToResolvedAlarms(setResolvedAlarms)
+    const unsubLongLived = subscribeToLongLivedAlarms(setLongLivedAlarms)
     return () => {
       unsubAntennas()
       unsubResolved()
+      unsubLongLived()
     }
   }, [user])
 
@@ -150,6 +153,19 @@ export default function DashboardPage() {
     link.click()
     document.body.removeChild(link)
   }
+
+  const longestActive = useMemo(() => {
+    let oldest: (Alarm & { antennaName: string }) | null = null
+    for (const a of antennas) {
+      for (const c of a.cells || []) {
+        if (!c.currentAlarm || c.currentAlarm.resolved) continue
+        if (!oldest || new Date(c.currentAlarm.alarmTime) < new Date(oldest.alarmTime)) {
+          oldest = { ...c.currentAlarm, antennaName: a.name }
+        }
+      }
+    }
+    return oldest
+  }, [antennas])
 
   if (authLoading) return null
 
@@ -409,6 +425,96 @@ export default function DashboardPage() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Chronic Alarms */}
+        <motion.div variants={itemVariants}>
+          <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest flex items-center gap-2">
+                  <Clock className="size-4 text-[var(--alarm-major)]" />
+                  Chronic Alarms
+                </CardTitle>
+                <p className="text-[10px] text-[var(--text-muted)]">Resolved alarms active for more than 24 hours</p>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {longestActive && (
+                <div
+                  className="flex items-center gap-3 rounded-[var(--radius-md)] px-4 py-3 mb-4 text-[12px]"
+                  style={{
+                    background: 'rgba(240,79,79,0.08)',
+                    border: '1px solid rgba(240,79,79,0.25)',
+                  }}
+                >
+                  <div className="size-2 rounded-full animate-pulse bg-[var(--alarm-critical)]" />
+                  <span className="text-[var(--alarm-critical)] font-semibold">{longestActive.antennaName}</span>
+                  <span className="text-[var(--text-muted)] font-mono text-[10px]">{longestActive.siteId} · {longestActive.technology}</span>
+                  <span className="text-[var(--text-secondary)] ml-auto font-mono text-[10px]">
+                    Active since {relTime(longestActive.alarmTime)}
+                  </span>
+                </div>
+              )}
+              {longLivedAlarms.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px] font-mono">
+                    <thead>
+                      <tr className="text-[var(--text-muted)] uppercase tracking-widest text-[9px] border-b border-[var(--glass-border)]">
+                        <th className="text-left pb-2 pr-4">Site</th>
+                        <th className="text-left pb-2 pr-4">Tech</th>
+                        <th className="text-left pb-2 pr-4">Severity</th>
+                        <th className="text-left pb-2 pr-4">Alarm</th>
+                        <th className="text-right pb-2">Duration</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {longLivedAlarms.map((alarm) => {
+                        const ms = alarm.durationMs ?? 0
+                        const durationColor =
+                          ms >= 3 * 24 * 60 * 60_000
+                            ? 'var(--alarm-critical)'
+                            : ms >= 1 * 24 * 60 * 60_000
+                            ? 'var(--alarm-major)'
+                            : 'var(--text-secondary)'
+                        return (
+                          <tr
+                            key={alarm.id}
+                            className="border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors"
+                          >
+                            <td className="py-2.5 pr-4 text-[var(--text-primary)]">{alarm.siteId}</td>
+                            <td className="py-2.5 pr-4 text-[var(--text-secondary)]">{alarm.technology}</td>
+                            <td className="py-2.5 pr-4">
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest font-bold"
+                                style={{
+                                  color: getCSSVar(sevColorVar[alarm.severity]),
+                                  background: `${getCSSVar(sevColorVar[alarm.severity])}22`,
+                                }}
+                              >
+                                {alarm.severity}
+                              </span>
+                            </td>
+                            <td className="py-2.5 pr-4 text-[var(--text-muted)] max-w-[280px] truncate">{alarm.text}</td>
+                            <td className="py-2.5 text-right font-bold" style={{ color: durationColor }}>
+                              {formatDuration(ms)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-10 text-center">
+                  <CheckCircle2 className="size-8 text-[var(--alarm-ok)] mx-auto mb-3 opacity-20" />
+                  <p className="text-[12px] text-[var(--text-muted)] font-mono uppercase tracking-widest">
+                    No chronic alarms in the last 24h
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>

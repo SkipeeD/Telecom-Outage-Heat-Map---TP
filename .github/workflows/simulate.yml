@@ -8,6 +8,13 @@ on:
     branches:
       - main
 
+# Cancel any queued run of the same workflow. GitHub cron scheduling is
+# unpredictable and can queue multiple runs; without this, a backlog of
+# stacked jobs burns quota all at once when the runner becomes available.
+concurrency:
+  group: simulate
+  cancel-in-progress: false
+
 jobs:
   simulate:
     runs-on: ubuntu-latest
@@ -29,5 +36,10 @@ jobs:
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > service-account.json
 
       - name: Run simulation
-        run: yarn tsx scripts/simulate.ts --duration=270000 --min=15000 --max=30000
+        # --min/--max: 45–90 s per tick. ~4 ticks per 4.5-min run vs ~12 at 15–30 s.
+        # Each tick writes to topology, which triggers onSnapshot on all connected
+        # clients. 4 writes × 288 runs = 1,152 topology updates/day (vs 3,456).
+        # Combined with the topology read cache in simulate.ts, total daily reads
+        # stay well under the 50 k Firestore free-tier limit.
+        run: yarn tsx scripts/simulate.ts --duration=270000 --min=45000 --max=90000
         timeout-minutes: 5

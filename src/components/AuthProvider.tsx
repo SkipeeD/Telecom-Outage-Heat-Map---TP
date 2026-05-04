@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const newProfile: UserProfile = {
               uid: firebaseUser.uid,
               email: firebaseUser.email!,
-              role: 'engineer',
+              role: 'user',
               createdAt: new Date().toISOString()
             }
             await setDoc(profileRef, newProfile)
