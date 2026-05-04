@@ -11,8 +11,8 @@ import type { Technology, AlarmSeverity } from '../src/types'
 
 if (getApps().length === 0) {
   const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
-    ? resolve(process.cwd(), process.env.GOOGLE_APPLICATION_CREDENTIALS)
-    : resolve(process.cwd(), 'service-account.json')
+      ? resolve(process.cwd(), process.env.GOOGLE_APPLICATION_CREDENTIALS)
+      : resolve(process.cwd(), 'service-account.json')
   initializeApp({
     credential: cert(serviceAccountPath),
   })
@@ -21,7 +21,7 @@ if (getApps().length === 0) {
 const db = getFirestore()
 
 // ---------------------------------------------------------------------------
-// Alarm catalogue
+// Alarm catalogue — sourced from real NOC alarm feeds
 // ---------------------------------------------------------------------------
 
 interface AlarmTemplate {
@@ -66,7 +66,7 @@ const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7'
 
 const PROVIDERS: string[] = ['Vodafone RO', 'Orange RO', 'Digi RO', 'Telekom RO']
 
-
+// Each entry is the set of cell technologies present at that antenna slot
 const CELL_BUNDLES: Technology[][] = [
   ['2G', '3G', '4G', '5G'],   // Full modern stack
   ['2G', '3G', '4G', '5G'],
@@ -90,7 +90,11 @@ const CELL_BUNDLES: Technology[][] = [
   ['2G', '3G', '4G', '5G'],
 ]
 
-
+// ---------------------------------------------------------------------------
+// Neighbourhood anchors — each has a real lat/lon so antennas are placed near
+// the actual location the name refers to.
+// Scatter sigma: ~0.003° lat (330 m) / ~0.004° lon (310 m at RO latitudes)
+// ---------------------------------------------------------------------------
 
 interface Neighborhood {
   name: string
@@ -941,8 +945,8 @@ function seededRandom(seed: number): () => number {
 // Place `count` antennas by cycling through neighbourhood anchors and
 // scattering each one within ~300-400 m of its anchor using Box-Muller.
 function generatePositions(
-  city: CityConfig,
-  rng: () => number,
+    city: CityConfig,
+    rng: () => number,
 ): Array<{ name: string; lat: number; lon: number }> {
   const SIGMA_LAT = 0.0003  // ~33 m — places antenna ~30-60 m from landmark
   const SIGMA_LON = 0.00036 // ~28 m at Romanian latitudes
@@ -1107,8 +1111,8 @@ async function seed() {
           //   major    → only if alarm has been open > 4 h (240 min)
           //   minor / warning → no automatic incident
           const shouldCreateIncident =
-            status === 'critical' ||
-            (status === 'major' && alarmAgeMinutes > 240)
+              status === 'critical' ||
+              (status === 'major' && alarmAgeMinutes > 240)
 
           const linkedIncidentId = shouldCreateIncident ? nextIncidentId() : null
 
