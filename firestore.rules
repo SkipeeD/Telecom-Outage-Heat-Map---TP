@@ -1,22 +1,39 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isEngineerOrAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['engineer', 'admin'];
+    }
+
     match /topology/{document=**} {
       allow read: if request.auth != null;
       allow write: if false;
     }
+
     match /alarms/{document=**} {
       allow read: if request.auth != null;
-      allow write: if false;
+      allow write: if isEngineerOrAdmin();
     }
+
     match /incidents/{document=**} {
       allow read: if request.auth != null;
-      allow write: if false;
+      allow write: if isEngineerOrAdmin();
     }
+
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null &&
+        (request.auth.uid == userId || isAdmin());
       allow create: if request.auth != null && request.auth.uid == userId;
-      allow update, delete: if false;
+      allow update: if isAdmin() &&
+        request.resource.data.role in ['user', 'engineer'];
+      allow delete: if false;
     }
   }
 }

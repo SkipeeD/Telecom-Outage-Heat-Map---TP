@@ -1,6 +1,6 @@
 import type { AlarmSeverity, Cell, Technology } from '@/types'
 
-export const TECHS: Technology[] = ['2G', '3G', '4G', '5G', 'B2B']
+export const TECHS: Technology[] = ['2G', '3G', '4G', '5G', '6G']
 
 const SEV_ORDER: AlarmSeverity[] = ['critical', 'major', 'minor', 'warning', 'ok']
 
@@ -9,7 +9,7 @@ export const techColorVar: Record<Technology, string> = {
   '3G':  '--tech-3g',
   '4G':  '--tech-4g',
   '5G':  '--tech-5g',
-  'B2B': '--tech-b2b',
+  '6G': '--tech-6g',
 }
 
 export const sevColorVar: Record<AlarmSeverity, string> = {
@@ -51,6 +51,16 @@ export function relTime(iso: string): string {
   const h = Math.floor(diff / 60)
   if (h < 24) return `${h}h ago`
   return `${Math.floor(h / 24)}d ago`
+}
+
+export function formatDuration(ms: number): string {
+  const totalMinutes = Math.floor(ms / 60_000)
+  const days = Math.floor(totalMinutes / 1440)
+  const hours = Math.floor((totalMinutes % 1440) / 60)
+  const minutes = totalMinutes % 60
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
 }
 
 export function statusCopy(sev: AlarmSeverity, cells: Cell[]): string {

@@ -33,7 +33,7 @@ export function getMarkerColor(tech: Technology, severity: AlarmSeverity) {
     '4G':  style.getPropertyValue('--tech-4g').trim(),
     '3G':  style.getPropertyValue('--tech-3g').trim(),
     '2G':  style.getPropertyValue('--tech-2g').trim(),
-    'B2B': style.getPropertyValue('--tech-b2b').trim(),
+    '6G': style.getPropertyValue('--tech-6g').trim(),
   }
   const severityStroke: Record<AlarmSeverity, string> = {
     critical: style.getPropertyValue('--alarm-critical').trim(),

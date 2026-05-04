@@ -1,4 +1,4 @@
-export type Technology = '2G' | '3G' | '4G' | '5G' | 'B2B'
+export type Technology = '2G' | '3G' | '4G' | '5G' | '6G'
 
 export type AlarmSeverity = 'critical' | 'major' | 'minor' | 'warning' | 'ok'
 
@@ -16,6 +16,14 @@ export interface Alarm {
   alarmTime: string
   cancelTime: string | null
   resolved: boolean
+  /** ms from alarmTime to cancelTime — null while alarm is active */
+  durationMs: number | null
+  /** ISO timestamp when a user acknowledged the alarm */
+  acknowledgedAt: string | null
+  /** UID of the user who acknowledged */
+  acknowledgedBy: string | null
+  /** Incident linked to this alarm (critical/major only) */
+  incidentId: string | null
 }
 
 export interface Cell {
@@ -24,10 +32,18 @@ export interface Cell {
   currentAlarm?: Alarm
 }
 
+export interface IncidentAssignee {
+  uid: string
+  email: string
+  displayName?: string
+}
+
 export interface Incident {
   incidentNumber: string          // INC0000001 format
   submitDate: string
   alarmId: string
+  antennaId: string
+  technology: Technology
   siteId: string
   status: 'ASSIGNED' | 'IN PROGRESS' | 'RESOLVED' | 'CLOSED'
   urgency: '1-Critical' | '2-High' | '3-Medium' | '4-Low'
@@ -35,6 +51,7 @@ export interface Incident {
   priority: '1-Critical' | '2-High' | '3-Medium' | '4-Low'
   closedDate: string | null
   assignee: string
+  assignees: IncidentAssignee[]
   resolvedDate: string | null
 }
 
@@ -52,7 +69,7 @@ export interface UserProfile {
   uid: string
   email: string
   displayName?: string
-  role: 'engineer' | 'admin'
+  role: 'user' | 'engineer' | 'admin'
   createdAt: string
 }
 

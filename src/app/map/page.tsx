@@ -1,13 +1,16 @@
 'use client'
 
+const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
+
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { motion } from 'motion/react'
 import { subscribeToAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useFilters, FilterSeverity } from '@/components/FilterProvider'
-import type { Antenna, AlarmSeverity } from '@/types'
+import type { Antenna, AlarmSeverity, Technology } from '@/types'
 import { AntennaPopup } from '@/components/antenna/AntennaPopup'
+import { AntennaDetailsPanel } from '@/components/antenna/AntennaDetailsPanel'
 
 const MapClient = dynamic(() => import('@/app/map/Map'), { 
   ssr: false,
@@ -42,6 +45,8 @@ export default function MapPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [popupAntenna, setPopupAntenna] = useState<Antenna | null>(null)
   const [popupAnchor, setPopupAnchor] = useState<Element | null>(null)
+  const [detailsAntenna, setDetailsAntenna] = useState<Antenna | null>(null)
+  const [detailsTech, setDetailsTech] = useState<Technology | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -50,7 +55,7 @@ export default function MapPage() {
       setAntennas(data)
       
       const newCounts: Record<FilterSeverity, number> = {
-        all: data.length,
+        all: 0,
         critical: 0,
         major: 0,
         minor: 0,
@@ -62,6 +67,10 @@ export default function MapPage() {
         const status = getWorstStatus(antenna)
         if (newCounts[status] !== undefined) {
           newCounts[status]++
+        }
+        // 'all' now only shows sites with alarms
+        if (status !== 'ok') {
+          newCounts.all++
         }
       })
       
@@ -88,10 +97,25 @@ export default function MapPage() {
     setPopupAnchor(null)
   }
 
+  const handleOpenDetails = (antenna: Antenna, tech: Technology) => {
+    setDetailsAntenna(antenna)
+    setDetailsTech(tech)
+    setPopupAntenna(null)
+    setPopupAnchor(null)
+  }
+
+  const handleDetailsClose = () => {
+    setDetailsAntenna(null)
+    setDetailsTech(null)
+    setSelectedId(null)
+  }
+
   if (authLoading) return null
 
   const activeFilters = {
-    severities: selectedSeverity === 'all' ? [] : [selectedSeverity as AlarmSeverity]
+    severities: selectedSeverity === 'all' 
+      ? ['critical', 'major', 'minor', 'warning'] as AlarmSeverity[]
+      : [selectedSeverity as AlarmSeverity]
   }
 
   return (
@@ -102,7 +126,7 @@ export default function MapPage() {
         className="flex-1 relative min-w-0"
         initial={{ opacity: 0, filter: 'blur(4px)' }}
         animate={{ opacity: 1, filter: 'blur(0px)' }}
-        transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
+        transition={{ duration: 0.45, ease: EASE }}
       >
         <MapClient
           antennas={antennas}
@@ -110,6 +134,7 @@ export default function MapPage() {
           activeFilters={activeFilters}
           onAntennaClick={handleAntennaClick}
         />
+
       </motion.div>
 
       {popupAntenna && (
@@ -118,8 +143,16 @@ export default function MapPage() {
           anchor={popupAnchor}
           open={!!popupAntenna}
           onClose={handlePopupClose}
+          onOpenDetails={handleOpenDetails}
         />
       )}
+
+      <AntennaDetailsPanel
+        antenna={detailsAntenna ?? { id: '', name: '', siteId: '', provider: '', latitude: 0, longitude: 0, cells: [] }}
+        initialTech={detailsTech ?? '4G'}
+        open={!!detailsAntenna}
+        onClose={handleDetailsClose}
+      />
     </div>
   )
 }
