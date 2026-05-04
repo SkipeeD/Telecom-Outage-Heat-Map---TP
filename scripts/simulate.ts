@@ -38,6 +38,13 @@ const TARGET_ALARM_RATE = 0.05
 const WRITE_BUDGET = 60
 let writesThisRun  = 0
 
+// Alarms that remain active beyond these thresholds without an incident get
+// auto-escalated. Critical/major already receive incidents at trigger time.
+const ESCALATION_THRESHOLD_MS: Partial<Record<AlarmSeverity, number>> = {
+  minor:   15 * 60_000,  // 15 min real-wall-clock time
+  warning: 30 * 60_000,  // 30 min
+}
+
 // ---------------------------------------------------------------------------
 // Alarm catalogue
 // ---------------------------------------------------------------------------
@@ -111,8 +118,23 @@ interface CellEntry { antennaId: string; siteId: string; technology: Technology 
 let allCells: CellEntry[] = []
 
 // Active alarm cache (loaded with limit at startup, updated in memory)
-// antennaId-tech → alarm doc
+// alarm doc id → alarm doc
 const activeAlarmCache = new Map<string, Alarm>()
+
+// Topology cells cache — read once on first access, never again within a run.
+// antennaId → cells array
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const topologyCache = new Map<string, any[]>()
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getCells(antennaId: string): Promise<any[]> {
+  const cached = topologyCache.get(antennaId)
+  if (cached !== undefined) return cached
+  const snap = await db.collection('topology').doc(antennaId).get()
+  const cells = snap.data()?.cells ?? []
+  topologyCache.set(antennaId, cells)
+  return cells
+}
 
 let incidentCounter = 1
 
@@ -160,6 +182,63 @@ function nextIncidentId(): string {
 }
 
 // ---------------------------------------------------------------------------
+// escalateStaleAlarms — run before every tick.
+// Scans the active alarm cache for alarms that have no incident yet and have
+// exceeded their severity threshold. Creates an incident and links it back to
+// the alarm doc in a single batch (2 writes per escalation).
+// ---------------------------------------------------------------------------
+
+async function escalateStaleAlarms() {
+  const now = Date.now()
+
+  for (const [alarmId, alarm] of activeAlarmCache) {
+    if (alarm.incidentId !== null) continue
+
+    const threshold = ESCALATION_THRESHOLD_MS[alarm.severity]
+    if (threshold === undefined) continue
+
+    const ageMs = now - new Date(alarm.alarmTime).getTime()
+    if (ageMs < threshold) continue
+
+    if (writesThisRun + 2 > WRITE_BUDGET) {
+      console.log('[simulate] Write budget full — skipping escalation')
+      break
+    }
+
+    const incidentId = nextIncidentId()
+    const submitDate = new Date().toISOString()
+    const ageMin     = Math.round(ageMs / 60_000)
+
+    const batch = db.batch()
+    batch.set(db.collection('incidents').doc(incidentId), {
+      incidentNumber: incidentId,
+      submitDate,
+      alarmId,
+      antennaId:   alarm.antennaId,
+      technology:  alarm.technology,
+      siteId:      alarm.siteId,
+      status:      'ASSIGNED',
+      urgency:     toUrgency(alarm.severity),
+      impact:      alarm.severity === 'minor' ? '3-Moderate/Limited' : '4-Minor/Localized',
+      priority:    toUrgency(alarm.severity),
+      closedDate:  null,
+      assignee:    ASSIGNEES[Math.floor(Math.random() * ASSIGNEES.length)],
+      assignees:   [],
+      resolvedDate: null,
+    })
+    batch.update(db.collection('alarms').doc(alarmId), { incidentId })
+    writesThisRun += 2
+
+    await batch.commit()
+
+    // Keep cache consistent — alarm now has a linked incident
+    activeAlarmCache.set(alarmId, { ...alarm, incidentId })
+
+    console.log(`[simulate] ESCALATE ${alarm.severity.padEnd(8)} — ${alarm.siteId} / ${alarm.technology} — unresolved ${ageMin}m → ${incidentId}`)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // triggerAlarm — raise an alarm on a cell that is currently ok
 // Reads: 1 (topology doc for the chosen antenna)
 // Writes: 2-3 (alarm + topology + optional incident)
@@ -189,12 +268,10 @@ async function triggerAlarm() {
   const alarmId  = `${pick.antennaId}-${pick.technology.toLowerCase()}-alarm-active`
   const alarmTime = new Date().toISOString()
 
-  // Read current topology to update the cells array correctly (1 read)
-  const topoSnap = await db.collection('topology').doc(pick.antennaId).get()
-  if (!topoSnap.exists) return
-  const topoData  = topoSnap.data()!
+  // Use cached topology — reads from Firestore only on first access per antenna per run.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cells: any[] = topoData.cells ?? []
+  const cells: any[] = await getCells(pick.antennaId)
+  if (cells.length === 0) return
 
   // Incident for critical + major only
   const shouldCreateIncident = severity === 'critical' || severity === 'major'
@@ -242,6 +319,7 @@ async function triggerAlarm() {
       priority:       toUrgency(severity),
       closedDate:     null,
       assignee:       ASSIGNEES[Math.floor(Math.random() * ASSIGNEES.length)],
+      assignees:      [],
       resolvedDate:   null,
     })
     writesThisRun++
@@ -249,6 +327,7 @@ async function triggerAlarm() {
 
   await batch.commit()
   activeAlarmCache.set(alarmId, { id: alarmId, ...alarmDoc })
+  topologyCache.set(pick.antennaId, updatedCells)
 
   console.log(`[simulate] TRIGGER  ${severity.padEnd(8)} — ${pick.siteId} / ${pick.technology} — "${template.text}"`)
 }
@@ -274,14 +353,13 @@ async function resolveAlarm() {
   const cancelTime = new Date().toISOString()
   const durationMs = new Date(cancelTime).getTime() - new Date(alarm.alarmTime).getTime()
 
-  // Read topology to update cells array (1 read)
-  const topoSnap = await db.collection('topology').doc(alarm.antennaId).get()
-  if (!topoSnap.exists) {
+  // Use cached topology — no Firestore read if this antenna was touched earlier in the run.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cells: any[] = await getCells(alarm.antennaId)
+  if (cells.length === 0) {
     activeAlarmCache.delete(alarmId)
     return
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cells: any[] = topoSnap.data()!.cells ?? []
   const updatedCells = cells.map(c =>
     c.technology === alarm.technology
       ? { technology: alarm.technology, status: 'ok' }
@@ -307,8 +385,10 @@ async function resolveAlarm() {
 
   await batch.commit()
   activeAlarmCache.delete(alarmId)
+  topologyCache.set(alarm.antennaId, updatedCells)
 
-  console.log(`[simulate] RESOLVE  ${alarm.severity.padEnd(8)} — ${alarm.siteId} / ${alarm.technology} — "${alarm.text}"`)
+  const resolvedInMin = Math.round(durationMs / 60_000)
+  console.log(`[simulate] RESOLVE  ${alarm.severity.padEnd(8)} — ${alarm.siteId} / ${alarm.technology} — "${alarm.text}" (${resolvedInMin}m)`)
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +397,9 @@ async function resolveAlarm() {
 
 async function tick() {
   try {
+    // Escalate any stale alarms before the trigger/resolve decision.
+    await escalateStaleAlarms()
+
     // Dynamic trigger probability:
     //   rises when alarm rate < TARGET (push toward it)
     //   falls when alarm rate > TARGET (let resolves dominate)

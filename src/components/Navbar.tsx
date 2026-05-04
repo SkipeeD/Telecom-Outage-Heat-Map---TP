@@ -13,6 +13,7 @@ import { SignalHigh, Sun, Moon } from "lucide-react"
 import { useFilters, FilterSeverity } from './FilterProvider'
 import { cn } from '@/lib/utils'
 import { Switch } from "@/components/ui/interfaces-switch"
+import { canManageUsers, roleLabel } from '@/lib/roles'
 
 export function ThemeToggle() {
   const { theme, toggle, isDark } = useTheme()
@@ -69,7 +70,7 @@ export function ThemeToggle() {
 }
 
 
-const NAV_TABS = [
+const BASE_NAV_TABS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/map',       label: 'Map' },
 ] as const
@@ -124,6 +125,10 @@ export default function Navbar() {
 
   const isMapPage = pathname === '/map' || pathname.startsWith('/map/')
 
+  const navTabs = canManageUsers(profile?.role)
+    ? [...BASE_NAV_TABS, { href: '/admin', label: 'Admin' } as const]
+    : BASE_NAV_TABS
+
   return (
     <header className="
       h-14 flex-shrink-0 grid grid-cols-[auto_1fr_auto] items-center px-6 relative
@@ -160,7 +165,7 @@ export default function Navbar() {
         bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)]"
       >
         {/* Dashboard / Map toggle — always visible */}
-        {NAV_TABS.map(({ href, label }) => {
+        {navTabs.map(({ href, label }) => {
           const isActive = pathname === href || (href === '/map' && pathname.startsWith('/map'))
           return (
             <motion.button
@@ -270,7 +275,7 @@ export default function Navbar() {
             {displayName}
           </span>
           <span className="text-[11px] font-mono text-[var(--text-muted)] mt-1 uppercase tracking-tighter">
-            {profile?.role === 'admin' ? 'NOC Admin' : 'NOC Engineer'}
+            {roleLabel(profile?.role)}
           </span>
         </div>
 

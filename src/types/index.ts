@@ -32,6 +32,12 @@ export interface Cell {
   currentAlarm?: Alarm
 }
 
+export interface IncidentAssignee {
+  uid: string
+  email: string
+  displayName?: string
+}
+
 export interface Incident {
   incidentNumber: string          // INC0000001 format
   submitDate: string
@@ -45,6 +51,7 @@ export interface Incident {
   priority: '1-Critical' | '2-High' | '3-Medium' | '4-Low'
   closedDate: string | null
   assignee: string
+  assignees: IncidentAssignee[]
   resolvedDate: string | null
 }
 
@@ -62,7 +69,7 @@ export interface UserProfile {
   uid: string
   email: string
   displayName?: string
-  role: 'engineer' | 'admin'
+  role: 'user' | 'engineer' | 'admin'
   createdAt: string
 }
 
