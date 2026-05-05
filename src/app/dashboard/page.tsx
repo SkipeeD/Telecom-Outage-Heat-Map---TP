@@ -4,17 +4,17 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { motion } from 'motion/react'
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area
+  PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
-import { subscribeToAntennas, subscribeToResolvedAlarms, subscribeToLongLivedAlarms } from '@/lib/firestore'
+import { subscribeToAntennas, subscribeToResolvedAlarms, subscribeToLongLivedAlarms, subscribeToIncidents } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
-import type { Antenna, AlarmSeverity, Technology, Alarm } from '@/types'
+import type { Antenna, AlarmSeverity, Technology, Alarm, Incident } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import { 
-  Activity, ShieldAlert, CheckCircle2, Zap, SignalHigh, Globe, Download, Clock, History,
-  ArrowRight
+  Activity, ShieldAlert, CheckCircle2, Globe, Download, Clock, History,
+  ArrowRight, Users
 } from 'lucide-react'
 import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
 import { Button } from '@/components/ui/button'
@@ -64,16 +64,19 @@ export default function DashboardPage() {
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
+  const [incidents, setIncidents] = useState<Incident[]>([])
 
   useEffect(() => {
     if (!user) return
     const unsubAntennas = subscribeToAntennas(setAntennas)
     const unsubResolved = subscribeToResolvedAlarms(setResolvedAlarms)
     const unsubLongLived = subscribeToLongLivedAlarms(setLongLivedAlarms)
+    const unsubIncidents = subscribeToIncidents(setIncidents)
     return () => {
       unsubAntennas()
       unsubResolved()
       unsubLongLived()
+      unsubIncidents()
     }
   }, [user])
 
@@ -177,7 +180,13 @@ export default function DashboardPage() {
   const activeAlerts = antennas
     .flatMap(a => (a.cells || [])
       .filter(c => c.currentAlarm && !c.currentAlarm.resolved)
-      .map(c => ({ ...c.currentAlarm!, antennaName: a.name }))
+      .map(c => {
+        const alarm = c.currentAlarm!
+        const incident = incidents.find(i =>
+          i.alarmId === alarm.id || (alarm.incidentId !== null && i.incidentNumber === alarm.incidentId)
+        )
+        return { ...alarm, antennaName: a.name, incident }
+      })
     )
     .sort((a, b) => new Date(b.alarmTime).getTime() - new Date(a.alarmTime).getTime())
     .slice(0, 8)
@@ -545,8 +554,11 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {activeAlerts.map((alarm, i) => (
-                   <div key={alarm.id} className="flex items-center justify-between py-3 border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors px-2 rounded-[var(--radius-md)] group">
+                {activeAlerts.map((alarm) => {
+                  const assignees = alarm.incident?.assignees ?? []
+
+                  return (
+                   <div key={alarm.id} className="flex items-center justify-between gap-4 py-3 border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors px-2 rounded-[var(--radius-md)] group">
                       <div className="flex items-center gap-4">
                         <div 
                           className="size-2 rounded-full animate-pulse"
@@ -573,6 +585,49 @@ export default function DashboardPage() {
                               Started {relTime(alarm.alarmTime)}
                             </span>
                           </div>
+                          <div className="flex items-center justify-end gap-2 mt-1">
+                            <Users className="size-3 text-[var(--alarm-ok)]" />
+                            {assignees.length === 0 ? (
+                              <span className="text-[10px] font-mono text-[var(--text-muted)] italic">
+                                No engineers assigned
+                              </span>
+                            ) : (
+                              <div className="flex items-center -space-x-1.5">
+                                {assignees.slice(0, 4).map((assignee, index) => {
+                                  const label = assignee.displayName ?? assignee.email.split('@')[0]
+                                  const initials = label.slice(0, 2).toUpperCase()
+
+                                  return (
+                                    <div
+                                      key={assignee.uid}
+                                      title={assignee.email}
+                                      className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[9px] font-bold ring-2 ring-[var(--bg-base)]"
+                                      style={{
+                                        background: 'color-mix(in srgb, var(--alarm-ok) 15%, var(--bg-subtle))',
+                                        color: 'var(--alarm-ok)',
+                                        border: '1px solid rgba(52,211,153,0.3)',
+                                        zIndex: assignees.length - index,
+                                      }}
+                                    >
+                                      {initials}
+                                    </div>
+                                  )
+                                })}
+                                {assignees.length > 4 && (
+                                  <div
+                                    className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[8px] font-bold ring-2 ring-[var(--bg-base)]"
+                                    style={{
+                                      background: 'var(--bg-subtle)',
+                                      color: 'var(--text-muted)',
+                                      border: '1px solid var(--glass-border)',
+                                    }}
+                                  >
+                                    +{assignees.length - 4}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
                         <div 
@@ -587,7 +642,8 @@ export default function DashboardPage() {
                         </div>
                       </div>
                    </div>
-                ))}
+                  )
+                })}
                 {activeAlerts.length === 0 && (
                   <div className="py-12 text-center">
                     <CheckCircle2 className="size-10 text-[var(--alarm-ok)] mx-auto mb-3 opacity-20" />

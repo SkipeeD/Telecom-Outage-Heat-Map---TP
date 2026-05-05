@@ -22,8 +22,7 @@ export async function POST(req: NextRequest) {
     const db = getAdminDb()
     const caller = await adminAuth.verifyIdToken(authHeader.slice(7))
 
-    const profileSnap = await db.collection('users').doc(caller.uid).get()
-    const role = (profileSnap.data()?.role ?? caller.role) as Role | undefined
+    const role = caller.role as Role | undefined
     if (role !== 'engineer' && role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
