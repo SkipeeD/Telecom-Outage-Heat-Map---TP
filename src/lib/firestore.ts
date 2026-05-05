@@ -11,6 +11,7 @@ import {
   where,
 } from 'firebase/firestore'
 import { db } from './firebase'
+import { auth } from './firebase'
 import type { Antenna, Alarm, AlarmSeverity, Incident, IncidentAssignee, Technology, UserProfile } from '@/types'
 
 export async function getAntennas(): Promise<Antenna[]> {
@@ -117,6 +118,20 @@ export async function getEngineers(): Promise<UserProfile[]> {
 }
 
 export async function updateUserRole(uid: string, role: 'user' | 'engineer'): Promise<void> {
+  const idToken = await auth.currentUser?.getIdToken()
+  if (!idToken) throw new Error('Not authenticated')
+
+  const res = await fetch('/api/set-role', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ uid, role }),
+  })
+
+  if (!res.ok) throw new Error('Failed to set custom claim')
+
   await updateDoc(doc(db, 'users', uid), { role })
 }
 
