@@ -223,6 +223,16 @@ html, body {
   }
 }
 
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Fix for Leaflet white grid lines between tiles */
 .leaflet-container {
   background: #1a1a2e !important;
