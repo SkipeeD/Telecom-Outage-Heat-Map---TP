@@ -5,8 +5,8 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { motion } from 'motion/react'
 import { subscribeToAntennas, subscribeToIncidents } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
-import type { Antenna, AlarmSeverity, Technology, Alarm, Incident } from '@/types'
-import { ShieldAlert, ArrowLeft, Clock, User, CheckCircle2, Search } from 'lucide-react'
+import type { Antenna, AlarmSeverity, Incident } from '@/types'
+import { ArrowLeft, Clock, Users, CheckCircle2, Search } from 'lucide-react'
 import { SeverityBadge } from '@/components/antenna/SeverityBadge'
 import { relTime, techColorVar, severityPalette } from '@/lib/antenna-helpers'
 import { Button } from '@/components/ui/button'
@@ -57,7 +57,9 @@ function DistributionContent() {
         .filter(c => c.currentAlarm && !c.currentAlarm.resolved)
         .map(c => {
           const alarm = c.currentAlarm!
-          const incident = incidents.find(i => i.alarmId === alarm.id)
+          const incident = incidents.find(i =>
+            i.alarmId === alarm.id || (alarm.incidentId !== null && i.incidentNumber === alarm.incidentId)
+          )
           return {
             ...alarm,
             antennaName: a.name,
@@ -190,7 +192,7 @@ function DistributionContent() {
               </div>
 
               {/* Right: Incident Info (if exists) */}
-              <div className="md:w-64 shrink-0">
+              <div className="md:w-72 shrink-0">
                 {item.incident ? (
                   <div className="bg-black/20 rounded-[var(--radius-md)] p-3 border border-[var(--glass-border)] space-y-2 group-hover:border-[var(--accent)]/30 transition-colors">
                     <div className="flex items-center justify-between">
@@ -201,9 +203,55 @@ function DistributionContent() {
                         {item.incident.status}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <User className="size-3 text-[var(--text-muted)]" />
-                      <span className="text-[var(--text-secondary)] truncate">{item.incident.assignee}</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Users className="size-3 text-[var(--alarm-ok)] shrink-0" />
+                        <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">
+                          Engineers
+                        </span>
+                      </div>
+
+                      {(item.incident.assignees ?? []).length === 0 ? (
+                        <span className="text-[10px] font-mono text-[var(--text-muted)] italic">
+                          Unassigned
+                        </span>
+                      ) : (
+                        <div className="flex items-center -space-x-1.5">
+                          {(item.incident.assignees ?? []).slice(0, 4).map((assignee, index) => {
+                            const label = assignee.displayName ?? assignee.email.split('@')[0]
+                            const initials = label.slice(0, 2).toUpperCase()
+                            const count = item.incident?.assignees?.length ?? 0
+
+                            return (
+                              <div
+                                key={assignee.uid}
+                                title={assignee.email}
+                                className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[9px] font-bold ring-2 ring-[var(--bg-base)]"
+                                style={{
+                                  background: 'color-mix(in srgb, var(--alarm-ok) 15%, var(--bg-subtle))',
+                                  color: 'var(--alarm-ok)',
+                                  border: '1px solid rgba(52,211,153,0.3)',
+                                  zIndex: count - index,
+                                }}
+                              >
+                                {initials}
+                              </div>
+                            )
+                          })}
+                          {(item.incident.assignees ?? []).length > 4 && (
+                            <div
+                              className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[8px] font-bold ring-2 ring-[var(--bg-base)]"
+                              style={{
+                                background: 'var(--bg-subtle)',
+                                color: 'var(--text-muted)',
+                                border: '1px solid var(--glass-border)',
+                              }}
+                            >
+                              +{(item.incident.assignees ?? []).length - 4}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="text-[10px] text-[var(--text-muted)] leading-tight line-clamp-2">
                       {item.incident.impact}
