@@ -144,6 +144,11 @@ export async function getAllIncidents(): Promise<Incident[]> {
   return snapshot.docs.map(d => d.data() as Incident)
 }
 
+export async function getMyIncidents(uid: string): Promise<Incident[]> {
+  const all = await getAllIncidents()
+  return all.filter(i => (i.assignees ?? []).some(a => a.uid === uid))
+}
+
 export async function updateIncidentStatus(
   incidentNumber: string,
   status: Incident['status']
