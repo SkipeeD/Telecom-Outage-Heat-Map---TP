@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { CircleMarker, Tooltip } from 'react-leaflet'
 import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
+import { cityForAntenna } from '@/lib/weather-cities'
 
 const severityRank: Record<AlarmSeverity, number> = {
   critical: 5,
@@ -49,6 +50,8 @@ export function getMarkerColor(tech: Technology, severity: AlarmSeverity) {
   }
 }
 
+const WEATHER_RING_COLOR = '#f97316'
+
 interface MarkerLayerProps {
   antennas: Antenna[]
   selectedId?: string | null
@@ -56,10 +59,11 @@ interface MarkerLayerProps {
     technologies?: Technology[]
     severities?: AlarmSeverity[]
   }
+  weatherRisk?: Record<string, boolean>
   onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
 }
 
-export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClick }: MarkerLayerProps) {
+export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick }: MarkerLayerProps) {
   const { theme } = useTheme()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
@@ -70,9 +74,11 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClic
     return antennas.map(antenna => {
       const { technology, status } = worstCell(antenna)
       const colors = getMarkerColor(technology, status)
-      return { ...antenna, worstTech: technology, worstStatus: status, colors }
+      const city = cityForAntenna(antenna.latitude, antenna.longitude)
+      const isWeatherRisk = !!(weatherRisk?.[city])
+      return { ...antenna, worstTech: technology, worstStatus: status, colors, city, isWeatherRisk }
     })
-  }, [antennas, theme])
+  }, [antennas, theme, weatherRisk])
 
   // Apply CSS scale transforms whenever hover/selection changes
   useEffect(() => {
@@ -104,6 +110,31 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClic
 
         return (
           <Fragment key={`${marker.id}-${theme}`}>
+            {/* Weather risk pulse ring */}
+            {marker.isWeatherRisk && (
+              <CircleMarker
+                center={[marker.latitude, marker.longitude]}
+                radius={14}
+                pathOptions={{
+                  fillColor: 'transparent',
+                  fillOpacity: 0,
+                  color: WEATHER_RING_COLOR,
+                  weight: 2,
+                  dashArray: '4 3',
+                }}
+                eventHandlers={{
+                  add: (e) => {
+                    const path = (e.target as unknown as { _path?: SVGElement })._path
+                    if (path) {
+                      path.style.transformBox = 'fill-box'
+                      path.style.transformOrigin = 'center'
+                      path.style.animation = 'weather-pulse 2s ease-in-out infinite'
+                      path.style.pointerEvents = 'none'
+                    }
+                  },
+                }}
+              />
+            )}
             <CircleMarker
               center={[marker.latitude, marker.longitude]}
               radius={7}
@@ -146,7 +177,7 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClic
                   <span className="text-[15px] font-semibold text-[var(--text-primary)] font-sans">
                     {marker.name}
                   </span>
-                  <div className="flex items-center gap-1.5 mt-1.5">
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                     <span
                       className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
                       style={{ backgroundColor: `${fill}2a`, borderColor: `${fill}6a`, color: fill }}
@@ -162,6 +193,18 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClic
                     {extraAlarmCount > 0 && (
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.1)] text-[var(--text-primary)]">
                         +{extraAlarmCount} alarm{extraAlarmCount > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {marker.isWeatherRisk && (
+                      <span
+                        className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
+                        style={{
+                          backgroundColor: `${WEATHER_RING_COLOR}22`,
+                          borderColor: `${WEATHER_RING_COLOR}66`,
+                          color: WEATHER_RING_COLOR,
+                        }}
+                      >
+                        ⚠ weather
                       </span>
                     )}
                   </div>
