@@ -23,6 +23,14 @@
         { "fieldPath": "resolved",   "order": "ASCENDING" },
         { "fieldPath": "durationMs", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "alarms",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resolved",   "order": "ASCENDING" },
+        { "fieldPath": "cancelTime", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

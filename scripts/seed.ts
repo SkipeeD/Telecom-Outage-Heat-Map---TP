@@ -7,7 +7,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import type { DocumentReference } from 'firebase-admin/firestore'
-import type { Technology, AlarmSeverity } from '../src/types'
+import type { Technology, AlarmSeverity, Alarm } from '../src/types'
 
 if (getApps().length === 0) {
   const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
@@ -1049,10 +1049,8 @@ class BatchWriter {
   }
 
   async commitAll(label: string) {
-    let total = 0
     for (const batch of this.batches) {
       await batch.commit()
-      total += this.LIMIT
     }
     console.log(`${label} written (${this.batches.length} batch(es)).`)
   }
@@ -1070,6 +1068,7 @@ async function seed() {
 
   // Manifest for simulator — avoids reading full topology collection on every run
   const manifestEntries: Array<{ antennaId: string; siteId: string; technology: Technology }> = []
+  const activeAlarms: Record<string, Alarm> = {}
 
   for (let ci = 0; ci < CITIES.length; ci++) {
     const city = CITIES[ci]
@@ -1130,10 +1129,11 @@ async function seed() {
             acknowledgedAt: null,
             acknowledgedBy: null,
             incidentId:     linkedIncidentId,
-          }
+          } satisfies Omit<Alarm, 'id'>
 
           alarmWriter.set(alarmRef, alarmData)
           currentAlarm = { id: alarmId, ...alarmData }
+          activeAlarms[alarmId] = { id: alarmId, ...alarmData }
           totalAlarms++
 
           if (linkedIncidentId) {
@@ -1217,6 +1217,14 @@ async function seed() {
   // Write simulator manifest — 1 doc read per run vs 282 topology reads
   await db.collection('config').doc('cells').set({ entries: manifestEntries })
   console.log(`Config/cells manifest written — ${manifestEntries.length} cell entries.`)
+
+  await db.collection('config').doc('simulationState').set({
+    version: 1,
+    activeAlarms,
+    incidentCounter,
+    updatedAt: new Date().toISOString(),
+  })
+  console.log(`Config/simulationState written — ${Object.keys(activeAlarms).length} active alarms.`)
 
   const total = CITIES.reduce((sum, c) => sum + c.antennaCount, 0)
   console.log(`Done — ${total} sites · ${totalAlarms} alarms · ${totalIncidents} incidents across ${CITIES.length} cities.`)
