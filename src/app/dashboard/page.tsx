@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import {
   Activity, ShieldAlert, CheckCircle2, Zap, Globe, Download, Clock, History,
-  ArrowRight, Cloud, CloudRain, Sun, Wind, Thermometer, LucideIcon, MapPin
+  ArrowRight, Cloud, CloudRain, Sun, Wind, Thermometer, LucideIcon, MapPin, Users
 } from 'lucide-react'
 import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
 import { cityForAntenna } from '@/lib/weather-cities'
@@ -89,6 +89,7 @@ export default function DashboardPage() {
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
+  const [incidents, setIncidents] = useState<Incident[]>([])
   
   const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
   const [selectedCity, setSelectedCity] = useState<CityWeatherDetail | null>(null)
@@ -100,7 +101,7 @@ export default function DashboardPage() {
 
     const interval = setInterval(() => {
       if (scrollRef.current) {
-        const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current
+        const { scrollLeft, scrollWidth } = scrollRef.current
         const halfWidth = (scrollWidth - 16) / 2 // 16 is gap/padding compensation if any, but simpler:
         
         // Use a more robust check for infinite loop
@@ -145,9 +146,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return
-    fetchWeather()
+    const timeoutId = window.setTimeout(() => {
+      void fetchWeather()
+    }, 0)
     const id = setInterval(fetchWeather, 30 * 60 * 1000)
-    return () => clearInterval(id)
+    return () => {
+      window.clearTimeout(timeoutId)
+      clearInterval(id)
+    }
   }, [user, fetchWeather])
 
   const stats = useMemo(() => {
@@ -780,7 +786,8 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {activeAlerts.map((alarm, i) => {
+                {activeAlerts.map((alarm) => {
+                  const assignees = alarm.incident?.assignees ?? []
                   const alarmAntenna = antennas.find(a =>
                     (a.cells || []).some(c => c.currentAlarm?.id === alarm.id)
                   )
