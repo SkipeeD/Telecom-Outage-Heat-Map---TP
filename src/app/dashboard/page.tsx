@@ -11,7 +11,11 @@ import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, AlarmSeverity, Technology, Alarm } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Activity, ShieldAlert, CheckCircle2, Zap, SignalHigh, Globe, Download, Clock, History } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { 
+  Activity, ShieldAlert, CheckCircle2, Zap, SignalHigh, Globe, Download, Clock, History,
+  ArrowRight
+} from 'lucide-react'
 import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
 import { Button } from '@/components/ui/button'
 
@@ -56,6 +60,7 @@ function getWorstStatus(antenna: Antenna): AlarmSeverity {
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth()
   const { theme } = useTheme()
+  const router = useRouter()
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
@@ -270,10 +275,14 @@ export default function DashboardPage() {
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <motion.div variants={itemVariants}>
-            <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
-              <CardHeader>
-                <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest">
+            <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)] overflow-hidden">
+              <CardHeader 
+                className="cursor-pointer hover:bg-[var(--glass-hover)] transition-colors group"
+                onClick={() => router.push('/dashboard/distribution')}
+              >
+                <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest flex items-center justify-between">
                   Alarm Severity Distribution
+                  <ArrowRight className="size-4 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors" />
                 </CardTitle>
               </CardHeader>
               <CardContent className="h-[300px]">
@@ -288,6 +297,12 @@ export default function DashboardPage() {
                       paddingAngle={5}
                       dataKey="value"
                       stroke="none"
+                      className="cursor-pointer outline-none"
+                      onClick={(data) => {
+                        if (data && data.name) {
+                          router.push(`/dashboard/distribution?severity=${data.name.toLowerCase()}`)
+                        }
+                      }}
                     >
                       {stats.pieData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={getCSSVar(entry.color)} />
