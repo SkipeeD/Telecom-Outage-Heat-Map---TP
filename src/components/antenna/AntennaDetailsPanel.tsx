@@ -13,9 +13,10 @@ import {
 } from '@/lib/antenna-helpers'
 import { SeverityBadge } from './SeverityBadge'
 import { Button } from '@/components/ui/button'
-import { createIncidentForAlarm, getAlarmsForAntennaCell, getEngineers, getIncidentsForCell, updateIncidentAssignees } from '@/lib/firestore'
+import { createIncidentForAlarm, getAlarmsForAntennaCell, getIncidentsForCell, updateIncidentAssignees, updateIncidentStatus } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
-import { canAcknowledgeAlarm, canAssignEngineers, canCreateIncident } from '@/lib/roles'
+import { canAssignEngineers, canCreateIncident } from '@/lib/roles'
+import { AssignEngineersModal } from '@/components/admin/AssignEngineersModal'
 
 // Evaluated once at module load — safe to use in render (avoids react-hooks/purity violation)
 const MODULE_NOW_MS = Date.now()
@@ -56,7 +57,6 @@ type IncFilter = 'ALL' | 'MINE' | 'IN PROGRESS' | 'ASSIGNED' | 'RESOLVED' | 'CLO
 export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Props) {
   const shouldReduce = useReducedMotion()
   const { profile } = useAuth()
-  const canAck    = canAcknowledgeAlarm(profile?.role)
   const canInc    = canCreateIncident(profile?.role)
   const canAssign = canAssignEngineers(profile?.role)
 
@@ -73,7 +73,8 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
   const [incidentCreated, setIncidentCreated]   = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    void (async () => {
       setActiveTech(initialTech)
       setTab('overview')
       setAcknowledged(false)
@@ -81,22 +82,28 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
       setIncFilter('ALL')
       setCreatingIncident(false)
       setIncidentCreated(null)
-    }
+    })()
   }, [open, initialTech])
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
 
-    setLoadingAlarms(true)
-    getAlarmsForAntennaCell(antenna.id, activeTech)
-      .then(data => { if (!cancelled) { setAlarmHistory(data); setLoadingAlarms(false) } })
-      .catch(() => { if (!cancelled) setLoadingAlarms(false) })
+    void (async () => {
+      setLoadingAlarms(true)
+      setLoadingIncidents(true)
 
-    setLoadingIncidents(true)
-    getIncidentsForCell(antenna.id, activeTech)
-      .then(data => { if (!cancelled) { setIncidents(data); setLoadingIncidents(false) } })
-      .catch(() => { if (!cancelled) setLoadingIncidents(false) })
+      const [alarms, incs] = await Promise.all([
+        getAlarmsForAntennaCell(antenna.id, activeTech).catch(() => null),
+        getIncidentsForCell(antenna.id, activeTech).catch(() => null),
+      ])
+
+      if (cancelled) return
+      setAlarmHistory(alarms ?? [])
+      setLoadingAlarms(false)
+      setIncidents(incs ?? [])
+      setLoadingIncidents(false)
+    })()
 
     return () => { cancelled = true }
   }, [open, activeTech, antenna.id])
@@ -109,6 +116,23 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
   }, [open, onClose])
 
   const cell = antenna.cells.find(c => c.technology === activeTech) ?? null
+
+  // Admins always see Acknowledge. Engineers only if assigned to an incident on this cell.
+  const isAssignedEngineer = profile?.role === 'engineer' &&
+    incidents.some(i => (i.assignees ?? []).some(a => a.uid === profile.uid))
+  const canAck = profile?.role === 'admin' || isAssignedEngineer
+
+  async function handleAcknowledge() {
+    setAcknowledged(true)
+    // Promote every ASSIGNED incident on this cell to IN PROGRESS
+    const assigned = incidents.filter(i => i.status === 'ASSIGNED')
+    await Promise.all(assigned.map(i => updateIncidentStatus(i.incidentNumber, 'IN PROGRESS')))
+    if (assigned.length > 0) {
+      setIncidents(prev =>
+        prev.map(i => i.status === 'ASSIGNED' ? { ...i, status: 'IN PROGRESS' } : i)
+      )
+    }
+  }
 
   async function handleCreateIncident() {
     const alarm = cell?.currentAlarm
@@ -257,7 +281,7 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
 
               {/* Row 3: Tabs */}
               <div className="flex gap-0 px-5">
-                {(['overview', 'alarms', 'incidents'] as Tab[]).map(t => {
+                {(['overview', ...(canAck || canInc ? ['alarms', 'incidents'] : [])] as Tab[]).map(t => {
                   const label =
                     t === 'alarms'    ? `Alarms (${alarmTabCount})` :
                     t === 'incidents' ? `Incidents (${incidentTabCount})` :
@@ -374,44 +398,46 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
             </div>
 
             {/* ── Footer ───────────────────────────────────────────── */}
-            <div className="shrink-0 flex gap-2 px-6 py-3 border-t border-[var(--glass-border)] bg-black/15">
-              <Button
-                onClick={() => canAck && setAcknowledged(true)}
-                disabled={!canAck}
-                title={!canAck ? 'Engineers and admins only' : undefined}
-                className={`
-                  flex-1 justify-center gap-1.5 text-[13px] font-medium
-                  rounded-[var(--radius-md)] transition-all duration-200
-                  disabled:opacity-40 disabled:cursor-not-allowed
-                  ${acknowledged
-                    ? 'bg-[var(--alarm-ok)] hover:bg-[var(--alarm-ok)] text-[var(--text-inverse)]'
-                    : 'bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white shadow-[var(--shadow-glow)]'}
-                `}
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                {acknowledged ? 'Acknowledged' : 'Acknowledge'}
-              </Button>
-              <Button
-                variant="outline"
-                disabled={!canInc || !cell?.currentAlarm || creatingIncident || !!incidentCreated}
-                title={!canInc ? 'Engineers and admins only' : undefined}
-                onClick={handleCreateIncident}
-                className="
-                  text-[13px] rounded-[var(--radius-md)]
-                  bg-[var(--glass-bg)] hover:bg-[var(--glass-hover)]
-                  border-[var(--glass-border)] hover:border-[var(--border-strong)]
-                  text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed
-                "
-              >
-                {incidentCreated
-                  ? `Created ${incidentCreated}`
-                  : creatingIncident
-                    ? 'Creating…'
-                    : 'Create incident'}
-              </Button>
-            </div>
+            {(canAck || canInc) && (
+              <div className="shrink-0 flex gap-2 px-6 py-3 border-t border-[var(--glass-border)] bg-black/15">
+                {canAck && (
+                  <Button
+                    onClick={handleAcknowledge}
+                    className={`
+                      flex-1 justify-center gap-1.5 text-[13px] font-medium
+                      rounded-[var(--radius-md)] transition-all duration-200
+                      ${acknowledged
+                        ? 'bg-[var(--alarm-ok)] hover:bg-[var(--alarm-ok)] text-[var(--text-inverse)]'
+                        : 'bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white shadow-[var(--shadow-glow)]'}
+                    `}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    {acknowledged ? 'Acknowledged' : 'Acknowledge'}
+                  </Button>
+                )}
+                {canInc && (
+                  <Button
+                    variant="outline"
+                    disabled={!cell?.currentAlarm || creatingIncident || !!incidentCreated}
+                    onClick={handleCreateIncident}
+                    className="
+                      text-[13px] rounded-[var(--radius-md)]
+                      bg-[var(--glass-bg)] hover:bg-[var(--glass-hover)]
+                      border-[var(--glass-border)] hover:border-[var(--border-strong)]
+                      text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed
+                    "
+                  >
+                    {incidentCreated
+                      ? `Created ${incidentCreated}`
+                      : creatingIncident
+                        ? 'Creating…'
+                        : 'Create incident'}
+                  </Button>
+                )}
+              </div>
+            )}
           </motion.div>
         </>
       )}
@@ -678,289 +704,189 @@ function IncidentsTab({
   profile, canAssign, onUpdateAssignees,
 }: IncidentsTabProps) {
   const isEngineerOrAdmin = profile?.role === 'engineer' || profile?.role === 'admin'
-
-  const [managingInc, setManagingInc]       = useState<string | null>(null)
-  const [engineers, setEngineers]           = useState<UserProfile[] | null>(null)
-  const [loadingEng, setLoadingEng]         = useState(false)
-  const [pendingUids, setPendingUids]       = useState<Set<string>>(new Set())
-  const [saving, setSaving]                 = useState(false)
-
-  async function openAssign(inc: Incident) {
-    setManagingInc(inc.incidentNumber)
-    setPendingUids(new Set((inc.assignees ?? []).map(a => a.uid)))
-    if (!engineers) {
-      setLoadingEng(true)
-      try { setEngineers(await getEngineers()) }
-      finally { setLoadingEng(false) }
-    }
-  }
-
-  async function saveAssignees(inc: Incident) {
-    if (!engineers) return
-    setSaving(true)
-    try {
-      const next = engineers
-        .filter(e => pendingUids.has(e.uid))
-        .map(e => ({ uid: e.uid, email: e.email, ...(e.displayName ? { displayName: e.displayName } : {}) }))
-      await onUpdateAssignees(inc.incidentNumber, next)
-      setManagingInc(null)
-    } finally {
-      setSaving(false)
-    }
-  }
+  const [assigningInc, setAssigningInc] = useState<Incident | null>(null)
 
   const allFilters: IncFilter[] = isEngineerOrAdmin
     ? ['ALL', 'MINE', ...STATUS_FILTERS.slice(1)]
     : STATUS_FILTERS
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Filter row */}
-      <div className="flex gap-1.5 flex-wrap">
-        {allFilters.map(f => {
-          const isActive = incFilter === f
-          const color    = INC_STATUS_COLOR[f]
-          const isMine   = f === 'MINE'
-          return (
-            <motion.button
-              key={f}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => setIncFilter(f)}
-              className="text-[11px] font-medium uppercase tracking-widest px-3 py-1.5 rounded-[var(--radius-md)] border transition-all duration-150 cursor-pointer"
-              style={
-                isActive && isMine
-                  ? { background: 'var(--accent-dim)', borderColor: 'var(--border-accent)', color: 'var(--accent-bright)' }
-                  : isActive && color
-                  ? { background: `color-mix(in srgb, ${color} 12%, transparent)`, borderColor: `color-mix(in srgb, ${color} 30%, transparent)`, color }
-                  : isActive
-                  ? { background: 'var(--accent-dim)', borderColor: 'var(--border-accent)', color: 'var(--accent-bright)' }
-                  : { background: 'var(--glass-bg)', borderColor: 'var(--glass-border)', color: 'var(--text-secondary)' }
-              }
-            >
-              {f}
-            </motion.button>
-          )
-        })}
-      </div>
-
-      {loading && <LoadingRow />}
-
-      {!loading && filteredIncidents.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <span className="text-[28px] text-[var(--alarm-ok)]">✓</span>
-          <span className="text-[14px] text-[var(--text-secondary)]">No incidents</span>
-          {incFilter !== 'ALL' && (
-            <span className="text-[12px] text-[var(--text-muted)]">Try changing the filter above</span>
-          )}
-        </div>
-      )}
-
-      {!loading && filteredIncidents.length > 0 && (
-        <div className="flex flex-col gap-3">
-          {filteredIncidents.map(inc => {
-            const statusColor   = INC_STATUS_COLOR[inc.status] ?? 'var(--text-muted)'
-            const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
-            const assignees     = inc.assignees ?? []
-            const isManaging    = managingInc === inc.incidentNumber
-            const iAmAssigned   = assignees.some(a => a.uid === profile?.uid)
-
+    <>
+      <div className="flex flex-col gap-4">
+        {/* Filter row */}
+        <div className="flex gap-1.5 flex-wrap">
+          {allFilters.map(f => {
+            const isActive = incFilter === f
+            const color    = INC_STATUS_COLOR[f]
+            const isMine   = f === 'MINE'
             return (
-              <div
-                key={inc.incidentNumber}
-                className="rounded-[var(--radius-md)] overflow-hidden"
-                style={{
-                  background: 'var(--glass-bg)',
-                  border: '1px solid var(--glass-border)',
-                  borderLeft: `2px solid ${statusColor}`,
-                }}
+              <motion.button
+                key={f}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => setIncFilter(f)}
+                className="text-[11px] font-medium uppercase tracking-widest px-3 py-1.5 rounded-[var(--radius-md)] border transition-all duration-150 cursor-pointer"
+                style={
+                  isActive && isMine
+                    ? { background: 'var(--accent-dim)', borderColor: 'var(--border-accent)', color: 'var(--accent-bright)' }
+                    : isActive && color
+                    ? { background: `color-mix(in srgb, ${color} 12%, transparent)`, borderColor: `color-mix(in srgb, ${color} 30%, transparent)`, color }
+                    : isActive
+                    ? { background: 'var(--accent-dim)', borderColor: 'var(--border-accent)', color: 'var(--accent-bright)' }
+                    : { background: 'var(--glass-bg)', borderColor: 'var(--glass-border)', color: 'var(--text-secondary)' }
+                }
               >
-                {/* Main card content */}
-                <div className="p-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[12px] font-bold text-[var(--text-primary)]">
-                        {inc.incidentNumber}
-                      </span>
-                      {iAmAssigned && (
-                        <span
-                          className="font-mono text-[8px] font-medium uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-full)]"
-                          style={{
-                            color: 'var(--accent-bright)',
-                            background: 'var(--accent-dim)',
-                            border: '1px solid var(--border-accent)',
-                          }}
-                        >
-                          You
-                        </span>
-                      )}
-                    </div>
-                    <span
-                      className="font-mono text-[9px] font-medium uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-full)]"
-                      style={{
-                        color: statusColor,
-                        background: `color-mix(in srgb, ${statusColor} 12%, transparent)`,
-                        border: `1px solid color-mix(in srgb, ${statusColor} 28%, transparent)`,
-                      }}
-                    >
-                      {inc.status}
-                    </span>
-                  </div>
-
-                  <p className="text-[13px] text-[var(--text-secondary)] mb-2 leading-snug">
-                    {inc.impact}
-                  </p>
-
-                  <div className="flex items-center gap-3 text-[11px] font-mono">
-                    <span className="text-[var(--text-muted)]">{relTime(inc.submitDate)}</span>
-                    <span style={{ color: priorityColor }}>{inc.priority}</span>
-                  </div>
-
-                  {/* Assignee strip */}
-                  <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-[var(--glass-border)]">
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                      {assignees.length === 0 ? (
-                        <span className="text-[10px] font-mono text-[var(--text-muted)] italic">
-                          No engineers assigned
-                        </span>
-                      ) : (
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {assignees.slice(0, 3).map(a => {
-                            const isMe = a.uid === profile?.uid
-                            const label = a.displayName ?? a.email.split('@')[0]
-                            const initials = label.slice(0, 2).toUpperCase()
-                            return (
-                              <span
-                                key={a.uid}
-                                title={a.email}
-                                className="flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 rounded-[var(--radius-full)]"
-                                style={{
-                                  color: isMe ? 'var(--accent-bright)' : 'var(--text-secondary)',
-                                  background: isMe ? 'var(--accent-dim)' : 'var(--bg-subtle)',
-                                  border: `1px solid ${isMe ? 'var(--border-accent)' : 'var(--glass-border)'}`,
-                                }}
-                              >
-                                <span className="font-bold">{initials}</span>
-                                <span className="max-w-[80px] truncate">{label}</span>
-                              </span>
-                            )
-                          })}
-                          {assignees.length > 3 && (
-                            <span className="font-mono text-[10px] text-[var(--text-muted)]">
-                              +{assignees.length - 3}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {canAssign && (
-                      <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => isManaging ? setManagingInc(null) : openAssign(inc)}
-                        className="shrink-0 text-[10px] font-medium uppercase tracking-widest px-2.5 py-1 rounded-[var(--radius-md)] border transition-colors duration-150 cursor-pointer ml-2"
-                        style={
-                          isManaging
-                            ? { background: 'var(--accent-dim)', borderColor: 'var(--border-accent)', color: 'var(--accent-bright)' }
-                            : { background: 'var(--glass-bg)', borderColor: 'var(--glass-border)', color: 'var(--text-secondary)' }
-                        }
-                      >
-                        {isManaging ? 'Cancel' : 'Assign'}
-                      </motion.button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Inline engineer picker (admin only) */}
-                <AnimatePresence>
-                  {isManaging && (
-                    <motion.div
-                      key="picker"
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                      className="overflow-hidden border-t border-[var(--glass-border)]"
-                    >
-                      <div className="px-3 py-3 flex flex-col gap-2" style={{ background: 'rgba(0,0,0,0.15)' }}>
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                          Select engineers
-                        </span>
-
-                        {loadingEng && <LoadingRow />}
-
-                        {!loadingEng && engineers && engineers.length === 0 && (
-                          <span className="text-[12px] text-[var(--text-muted)] italic">
-                            No engineers found. Promote users first.
-                          </span>
-                        )}
-
-                        {!loadingEng && engineers && engineers.length > 0 && (
-                          <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
-                            {engineers.map(eng => {
-                              const checked = pendingUids.has(eng.uid)
-                              const label   = eng.displayName ?? eng.email.split('@')[0]
-                              return (
-                                <label
-                                  key={eng.uid}
-                                  className="flex items-center gap-2.5 px-2 py-1.5 rounded-[var(--radius-md)] cursor-pointer transition-colors duration-150 hover:bg-[var(--glass-hover)]"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={e => {
-                                      const next = new Set(pendingUids)
-                                      e.target.checked ? next.add(eng.uid) : next.delete(eng.uid)
-                                      setPendingUids(next)
-                                    }}
-                                    className="w-3.5 h-3.5 accent-[var(--accent)]"
-                                  />
-                                  <div className="flex flex-col min-w-0">
-                                    <span className="text-[12px] text-[var(--text-primary)] truncate">{label}</span>
-                                    <span className="text-[10px] font-mono text-[var(--text-muted)] truncate">{eng.email}</span>
-                                  </div>
-                                </label>
-                              )
-                            })}
-                          </div>
-                        )}
-
-                        <div className="flex gap-2 mt-1">
-                          <Button
-                            size="sm"
-                            disabled={saving || loadingEng}
-                            onClick={() => saveAssignees(inc)}
-                            className="
-                              flex-1 h-7 text-[11px] font-medium uppercase tracking-widest
-                              bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white
-                              rounded-[var(--radius-md)] disabled:opacity-50
-                            "
-                          >
-                            {saving ? 'Saving…' : 'Save'}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setManagingInc(null)}
-                            className="
-                              h-7 text-[11px] font-medium uppercase tracking-widest
-                              bg-[var(--glass-bg)] border-[var(--glass-border)]
-                              hover:bg-[var(--glass-hover)] hover:border-[var(--border-strong)]
-                              text-[var(--text-secondary)] rounded-[var(--radius-md)]
-                            "
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+                {f}
+              </motion.button>
             )
           })}
         </div>
-      )}
-    </div>
+
+        {loading && <LoadingRow />}
+
+        {!loading && filteredIncidents.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <span className="text-[28px] text-[var(--alarm-ok)]">✓</span>
+            <span className="text-[14px] text-[var(--text-secondary)]">No incidents</span>
+            {incFilter !== 'ALL' && (
+              <span className="text-[12px] text-[var(--text-muted)]">Try changing the filter above</span>
+            )}
+          </div>
+        )}
+
+        {!loading && filteredIncidents.length > 0 && (
+          <div className="flex flex-col gap-2.5">
+            {filteredIncidents.map(inc => {
+              const statusColor   = INC_STATUS_COLOR[inc.status] ?? 'var(--text-muted)'
+              const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
+              const assignees     = inc.assignees ?? []
+              const iAmAssigned   = assignees.some(a => a.uid === profile?.uid)
+
+              return (
+                <div
+                  key={inc.incidentNumber}
+                  className="rounded-[var(--radius-md)] overflow-hidden"
+                  style={{
+                    background:  'var(--glass-bg)',
+                    border:      '1px solid var(--glass-border)',
+                    borderLeft:  `2px solid ${statusColor}`,
+                  }}
+                >
+                  <div className="p-3">
+                    {/* Top row */}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-[12px] font-bold text-[var(--text-primary)]">
+                          {inc.incidentNumber}
+                        </span>
+                        {iAmAssigned && (
+                          <span
+                            className="font-mono text-[8px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-full)]"
+                            style={{ color: 'var(--accent-bright)', background: 'var(--accent-dim)', border: '1px solid var(--border-accent)' }}
+                          >
+                            You
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className="font-mono text-[9px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-full)]"
+                        style={{
+                          color:       statusColor,
+                          background:  `color-mix(in srgb, ${statusColor} 12%, transparent)`,
+                          border:      `1px solid color-mix(in srgb, ${statusColor} 28%, transparent)`,
+                        }}
+                      >
+                        {inc.status}
+                      </span>
+                    </div>
+
+                    <p className="text-[13px] text-[var(--text-secondary)] mb-2 leading-snug">
+                      {inc.impact}
+                    </p>
+
+                    <div className="flex items-center gap-3 text-[11px] font-mono">
+                      <span className="text-[var(--text-muted)]">{relTime(inc.submitDate)}</span>
+                      <span style={{ color: priorityColor }}>{inc.priority}</span>
+                    </div>
+
+                    {/* Assignee strip */}
+                    <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-[var(--glass-border)]">
+                      <div className="flex items-center gap-1 flex-1 min-w-0">
+                        {assignees.length === 0 ? (
+                          <span className="text-[10px] font-mono text-[var(--text-muted)] italic">
+                            No engineers assigned
+                          </span>
+                        ) : (
+                          <div className="flex items-center -space-x-1.5">
+                            {assignees.slice(0, 4).map((a, i) => {
+                              const isMe     = a.uid === profile?.uid
+                              const label    = a.displayName ?? a.email.split('@')[0]
+                              const initials = label.slice(0, 2).toUpperCase()
+                              return (
+                                <div
+                                  key={a.uid}
+                                  title={isMe ? `${a.email} (you)` : a.email}
+                                  className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[9px] font-bold ring-2 ring-[var(--bg-overlay)]"
+                                  style={{
+                                    background: isMe
+                                      ? 'color-mix(in srgb, var(--accent) 22%, var(--bg-subtle))'
+                                      : 'color-mix(in srgb, var(--alarm-ok) 15%, var(--bg-subtle))',
+                                    color:  isMe ? 'var(--accent-bright)' : 'var(--alarm-ok)',
+                                    border: `1px solid ${isMe ? 'var(--border-accent)' : 'rgba(52,211,153,0.3)'}`,
+                                    zIndex: assignees.length - i,
+                                  }}
+                                >
+                                  {initials}
+                                </div>
+                              )
+                            })}
+                            {assignees.length > 4 && (
+                              <div
+                                className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[8px] font-bold ring-2 ring-[var(--bg-overlay)]"
+                                style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)', border: '1px solid var(--glass-border)' }}
+                              >
+                                +{assignees.length - 4}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {canAssign && (
+                        <motion.button
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setAssigningInc(inc)}
+                          className="
+                            shrink-0 flex items-center gap-1.5
+                            text-[10px] font-medium uppercase tracking-widest px-2.5 py-1
+                            rounded-[var(--radius-md)] border transition-colors duration-150 cursor-pointer ml-2
+                            border-[var(--glass-border)] bg-[var(--glass-bg)]
+                            text-[var(--text-secondary)] hover:text-[var(--text-primary)]
+                            hover:bg-[var(--glass-hover)] hover:border-[var(--border-strong)]
+                          "
+                        >
+                          <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                            <circle cx="4.5" cy="2.5" r="1.8" stroke="currentColor" strokeWidth="1.1" />
+                            <path d="M1 8c0-1.9 1.6-3.5 3.5-3.5S8 6.1 8 8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+                          </svg>
+                          Assign
+                        </motion.button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <AssignEngineersModal
+        incident={assigningInc}
+        open={assigningInc !== null}
+        onClose={() => setAssigningInc(null)}
+        onSave={onUpdateAssignees}
+      />
+    </>
   )
 }
 
