@@ -172,3 +172,14 @@ export function subscribeToAntennas(
     callback(antennas)
   })
 }
+
+export function subscribeToIncidents(
+  callback: (incidents: Incident[]) => void
+): () => void {
+  return onSnapshot(collection(db, 'incidents'), (snapshot) => {
+    const incidents = snapshot.docs.map(
+      (doc) => ({ ...doc.data() } as Incident)
+    )
+    callback(incidents)
+  })
+}
