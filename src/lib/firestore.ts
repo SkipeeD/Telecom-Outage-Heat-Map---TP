@@ -99,7 +99,7 @@ export async function createIncidentForAlarm(alarm: Alarm): Promise<string> {
     impact:      alarm.severity === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
     priority:    urgency,
     closedDate:  null,
-    assignee:    'USER1',
+    assignee:    '',
     assignees:   [],
     resolvedDate: null,
   } satisfies Incident)
@@ -133,6 +133,27 @@ export async function updateUserRole(uid: string, role: 'user' | 'engineer'): Pr
   if (!res.ok) throw new Error('Failed to set custom claim')
 
   await updateDoc(doc(db, 'users', uid), { role })
+}
+
+export async function getAllIncidents(): Promise<Incident[]> {
+  const q = query(
+    collection(db, 'incidents'),
+    orderBy('submitDate', 'desc')
+  )
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(d => d.data() as Incident)
+}
+
+export async function getMyIncidents(uid: string): Promise<Incident[]> {
+  const all = await getAllIncidents()
+  return all.filter(i => (i.assignees ?? []).some(a => a.uid === uid))
+}
+
+export async function updateIncidentStatus(
+  incidentNumber: string,
+  status: Incident['status']
+): Promise<void> {
+  await updateDoc(doc(db, 'incidents', incidentNumber), { status })
 }
 
 export async function updateIncidentAssignees(

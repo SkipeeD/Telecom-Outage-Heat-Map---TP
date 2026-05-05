@@ -62,7 +62,6 @@ const ALARM_CATALOGUE: AlarmTemplate[] = [
 // More alarms than this looks like a network-wide outage.
 //   critical: 0.5%   major: 1.0%   minor: 1.5%   warning: 2.0%   ok: 95%
 
-const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7', 'USER8']
 
 const PROVIDERS: string[] = ['Vodafone RO', 'Orange RO', 'Digi RO', 'Telekom RO']
 
@@ -1140,7 +1139,6 @@ async function seed() {
           if (linkedIncidentId) {
             const incidentRef    = db.collection('incidents').doc(linkedIncidentId)
             const incidentStatus = status === 'critical' ? 'IN PROGRESS' : 'ASSIGNED'
-            const assignee       = ASSIGNEES[(ci + i + ci2) % ASSIGNEES.length]
 
             incidentWriter.set(incidentRef, {
               incidentNumber: linkedIncidentId,
@@ -1154,7 +1152,8 @@ async function seed() {
               impact:         status === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
               priority:       toPriority(status),
               closedDate:     null,
-              assignee,
+              assignee:       '',
+              assignees:      [],
               resolvedDate:   null,
             })
             totalIncidents++

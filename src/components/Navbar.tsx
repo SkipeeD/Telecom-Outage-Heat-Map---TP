@@ -15,6 +15,10 @@ import { cn } from '@/lib/utils'
 import { Switch } from "@/components/ui/interfaces-switch"
 import { canManageUsers, roleLabel } from '@/lib/roles'
 
+function isEngineer(role: string | undefined) {
+  return role === 'engineer'
+}
+
 export function ThemeToggle() {
   const { theme, toggle, isDark } = useTheme()
 
@@ -127,6 +131,8 @@ export default function Navbar() {
 
   const navTabs = canManageUsers(profile?.role)
     ? [...BASE_NAV_TABS, { href: '/admin', label: 'Admin' } as const]
+    : isEngineer(profile?.role)
+    ? [...BASE_NAV_TABS, { href: '/engineer', label: 'Mine' } as const]
     : BASE_NAV_TABS
 
   return (

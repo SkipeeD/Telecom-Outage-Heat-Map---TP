@@ -14,6 +14,10 @@ import { SeverityBadge } from './SeverityBadge'
 import { CellTile } from './CellTile'
 import { AlarmCard, EmptyAlarm } from './AlarmCard'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/components/AuthProvider'
+import { canAcknowledgeAlarm } from '@/lib/roles'
+import { getIncidentsForCell, updateIncidentStatus } from '@/lib/firestore'
+import type { Incident } from '@/types'
 
 const POPUP_WIDTH = 360
 const GAP = 12
@@ -45,9 +49,11 @@ export function AntennaPopup({
   onOpenDetails,
 }: Props) {
   const shouldReduce = useReducedMotion()
+  const { profile } = useAuth()
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<Position | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
+  const [cellIncidents, setCellIncidents] = useState<Incident[]>([])
   const hasDragged = useRef(false)
 
   const overall = useMemo(() => overallSeverity(antenna.cells), [antenna.cells])
@@ -63,12 +69,39 @@ export function AntennaPopup({
     setPrevAntennaId(antenna.id)
     setSelectedTech(worstCell?.technology ?? antenna.cells[0]?.technology ?? null)
     setAcknowledged(false)
+    setCellIncidents([])
   }
 
   // Ref mutation must stay outside render
   useEffect(() => {
     hasDragged.current = false
   }, [antenna.id])
+
+  // Load incidents for the selected cell so engineers can ack + promote
+  useEffect(() => {
+    if (!open || !selectedTech) return
+    let cancelled = false
+    void getIncidentsForCell(antenna.id, selectedTech).then(incs => {
+      if (!cancelled) setCellIncidents(incs)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [open, antenna.id, selectedTech])
+
+  const isAssignedEngineer = profile?.role === 'engineer' &&
+    cellIncidents.some(i => (i.assignees ?? []).some(a => a.uid === profile.uid))
+  const canAck = profile?.role === 'admin' || isAssignedEngineer
+
+  async function handleAcknowledge() {
+    setAcknowledged(true)
+    onAcknowledge?.(antenna)
+    const assigned = cellIncidents.filter(i => i.status === 'ASSIGNED')
+    if (assigned.length > 0) {
+      await Promise.all(assigned.map(i => updateIncidentStatus(i.incidentNumber, 'IN PROGRESS')))
+      setCellIncidents(prev =>
+        prev.map(i => i.status === 'ASSIGNED' ? { ...i, status: 'IN PROGRESS' } : i)
+      )
+    }
+  }
 
   useLayoutEffect(() => {
     if (!open || !anchor || !wrapRef.current) return
@@ -299,24 +332,23 @@ export function AntennaPopup({
 
           {/* Footer */}
           <div className="flex gap-2 px-4 py-3 border-t border-[var(--glass-border)] bg-black/10 shrink-0 cursor-default">
-            <Button
-              onClick={() => {
-                setAcknowledged(true)
-                onAcknowledge?.(antenna)
-              }}
-              className={`
-                flex-1 justify-center gap-1.5 text-[12px] font-medium
-                rounded-[var(--radius-md)] transition-all duration-200
-                ${acknowledged
-                  ? 'bg-[var(--alarm-ok)] hover:bg-[var(--alarm-ok)] text-[var(--text-inverse)]'
-                  : 'bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white shadow-[var(--shadow-glow)]'}
-              `}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6 L5 9 L10 3" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {acknowledged ? 'Acknowledged' : 'Acknowledge'}
-            </Button>
+            {canAck && (
+              <Button
+                onClick={handleAcknowledge}
+                className={`
+                  flex-1 justify-center gap-1.5 text-[12px] font-medium
+                  rounded-[var(--radius-md)] transition-all duration-200
+                  ${acknowledged
+                    ? 'bg-[var(--alarm-ok)] hover:bg-[var(--alarm-ok)] text-[var(--text-inverse)]'
+                    : 'bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white shadow-[var(--shadow-glow)]'}
+                `}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 6 L5 9 L10 3" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {acknowledged ? 'Acknowledged' : 'Acknowledge'}
+              </Button>
+            )}
             {selectedTech && (
               <Button
                 variant="outline"
