@@ -107,7 +107,6 @@ function toUrgency(severity: AlarmSeverity): string {
   }
 }
 
-const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7', 'USER8']
 
 // ---------------------------------------------------------------------------
 // In-memory state — loaded once from Firestore at startup
@@ -222,7 +221,7 @@ async function escalateStaleAlarms() {
       impact:      alarm.severity === 'minor' ? '3-Moderate/Limited' : '4-Minor/Localized',
       priority:    toUrgency(alarm.severity),
       closedDate:  null,
-      assignee:    ASSIGNEES[Math.floor(Math.random() * ASSIGNEES.length)],
+      assignee:    '',
       assignees:   [],
       resolvedDate: null,
     })
@@ -318,7 +317,7 @@ async function triggerAlarm() {
       impact:         severity === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
       priority:       toUrgency(severity),
       closedDate:     null,
-      assignee:       ASSIGNEES[Math.floor(Math.random() * ASSIGNEES.length)],
+      assignee:       '',
       assignees:      [],
       resolvedDate:   null,
     })

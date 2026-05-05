@@ -76,7 +76,7 @@ export function SignupForm({
       await setDoc(doc(db, 'users', user.uid), {
         email: user.email,
         createdAt: new Date().toISOString(),
-        role: 'engineer',
+        role: 'user',
       })
 
       await sendEmailVerification(user)
@@ -102,7 +102,7 @@ export function SignupForm({
         await setDoc(doc(db, 'users', user.uid), {
           email: user.email,
           createdAt: new Date().toISOString(),
-          role: 'engineer',
+          role: 'user',
         })
       }
       

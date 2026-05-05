@@ -11,8 +11,8 @@ import type { Technology, AlarmSeverity } from '../src/types'
 
 if (getApps().length === 0) {
   const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
-    ? resolve(process.cwd(), process.env.GOOGLE_APPLICATION_CREDENTIALS)
-    : resolve(process.cwd(), 'service-account.json')
+      ? resolve(process.cwd(), process.env.GOOGLE_APPLICATION_CREDENTIALS)
+      : resolve(process.cwd(), 'service-account.json')
   initializeApp({
     credential: cert(serviceAccountPath),
   })
@@ -62,7 +62,6 @@ const ALARM_CATALOGUE: AlarmTemplate[] = [
 // More alarms than this looks like a network-wide outage.
 //   critical: 0.5%   major: 1.0%   minor: 1.5%   warning: 2.0%   ok: 95%
 
-const ASSIGNEES = ['USER1', 'USER2', 'USER3', 'USER4', 'USER5', 'USER6', 'USER7', 'USER8']
 
 const PROVIDERS: string[] = ['Vodafone RO', 'Orange RO', 'Digi RO', 'Telekom RO']
 
@@ -114,25 +113,25 @@ const CITIES: CityConfig[] = [
     // 50 real landmarks → 1 antenna each = 50 total
     name: 'București', code: 'B', antennaCount: 50,
     neighborhoods: [
-      { name: 'Arcul de Triumf',          lat: 44.4670, lon: 26.0735 }, // verified latitude.to
-      { name: 'Gara de Nord',             lat: 44.4469, lon: 26.0744 }, // verified by user
-      { name: 'Palatul Parlamentului',    lat: 44.4232, lon: 26.0858 }, // verified latitude.to
-      { name: 'Sun Plaza',                lat: 44.3962, lon: 26.1231 }, // verified latitude.to
-      { name: 'AFI Palace Cotroceni',     lat: 44.4247, lon: 26.0515 }, // verified latitude.to
-      { name: 'Băneasa Shopping City',    lat: 44.5057, lon: 26.0890 }, // verified latitude.to
-      { name: 'Herăstrău Park',           lat: 44.4690, lon: 26.0761 }, // verified latitude.to
-      { name: 'ParkLake Mall',            lat: 44.4203, lon: 26.1485 }, // verified flatlong.com
-      { name: 'Arena Națională',          lat: 44.4357, lon: 26.1515 }, // verified latitude.to
-      { name: 'Piața Unirii',             lat: 44.4235, lon: 26.1013 }, // verified latitude.to
-      { name: 'Piața Victoriei',          lat: 44.4516, lon: 26.0871 }, // verified latitude.to
-      { name: 'Piața Romană',             lat: 44.4415, lon: 26.0913 }, // verified latitude.to
-      { name: 'Universitatea București',  lat: 44.4347, lon: 26.1007 }, // verified latitude.to
-      { name: 'Politehnica',              lat: 44.4363, lon: 26.0508 }, // verified latitude.to
-      { name: 'Piața Obor',              lat: 44.4503, lon: 26.1245 }, // verified latitude.to
-      { name: 'Romexpo',                  lat: 44.4763, lon: 26.0651 }, // verified latitude.to
-      { name: 'Cișmigiu',                 lat: 44.4356, lon: 26.0877 }, // verified latitude.to
-      { name: 'București Mall',           lat: 44.4188, lon: 26.1226 }, // verified latitude.to
-      { name: 'Gara Basarab',             lat: 44.4503, lon: 26.0672 }, // verified latitude.to
+      { name: 'Arcul de Triumf',          lat: 44.4670, lon: 26.0735 },
+      { name: 'Gara de Nord',             lat: 44.4469, lon: 26.0744 },
+      { name: 'Palatul Parlamentului',    lat: 44.4232, lon: 26.0858 },
+      { name: 'Sun Plaza',                lat: 44.3962, lon: 26.1231 },
+      { name: 'AFI Palace Cotroceni',     lat: 44.4247, lon: 26.0515 },
+      { name: 'Băneasa Shopping City',    lat: 44.5057, lon: 26.0890 },
+      { name: 'Herăstrău Park',           lat: 44.4690, lon: 26.0761 },
+      { name: 'ParkLake Mall',            lat: 44.4203, lon: 26.1485 },
+      { name: 'Arena Națională',          lat: 44.4357, lon: 26.1515 },
+      { name: 'Piața Unirii',             lat: 44.4235, lon: 26.1013 },
+      { name: 'Piața Victoriei',          lat: 44.4516, lon: 26.0871 },
+      { name: 'Piața Romană',             lat: 44.4415, lon: 26.0913 },
+      { name: 'Universitatea București',  lat: 44.4347, lon: 26.1007 },
+      { name: 'Politehnica',              lat: 44.4363, lon: 26.0508 },
+      { name: 'Piața Obor',              lat: 44.4503, lon: 26.1245 },
+      { name: 'Romexpo',                  lat: 44.4763, lon: 26.0651 },
+      { name: 'Cișmigiu',                 lat: 44.4356, lon: 26.0877 },
+      { name: 'București Mall',           lat: 44.4188, lon: 26.1226 },
+      { name: 'Gara Basarab',             lat: 44.4503, lon: 26.0672 },
       { name: 'Piața Gorjului',           lat: 44.4290, lon: 26.0089 },
       { name: 'Parcul Tineretului',       lat: 44.4051, lon: 26.1005 },
       { name: 'Piața Drumul Taberei',     lat: 44.4145, lon: 26.0258 },
@@ -167,14 +166,14 @@ const CITIES: CityConfig[] = [
     ],
   },
   {
-    // 30 real landmarks → 1 antenna each = 30 total
+
     name: 'Cluj-Napoca', code: 'C', antennaCount: 30,
     neighborhoods: [
-      { name: 'Piața Unirii',        lat: 46.7699, lon: 23.5896 }, // verified latlong.net
-      { name: 'Universitatea UBB',    lat: 46.7673, lon: 23.5880 }, // verified latitude.to
-      { name: 'Gara Cluj-Napoca',     lat: 46.7844, lon: 23.5864 }, // verified czech-transport
-      { name: 'Iulius Mall',          lat: 46.7726, lon: 23.6269 }, // verified Waze/Wikipedia
-      { name: 'Aeroport Cluj',        lat: 46.7843, lon: 23.6850 }, // verified latitude.to
+      { name: 'Piața Unirii',        lat: 46.7699, lon: 23.5896 },
+      { name: 'Universitatea UBB',    lat: 46.7673, lon: 23.5880 },
+      { name: 'Gara Cluj-Napoca',     lat: 46.7844, lon: 23.5864 },
+      { name: 'Iulius Mall',          lat: 46.7726, lon: 23.6269 },
+      { name: 'Aeroport Cluj',        lat: 46.7843, lon: 23.6850 },
       { name: 'Central Park',         lat: 46.7741, lon: 23.5978 },
       { name: 'Cluj Arena',           lat: 46.7698, lon: 23.5998 },
       { name: 'Grădina Botanică',     lat: 46.7558, lon: 23.5873 },
@@ -203,12 +202,12 @@ const CITIES: CityConfig[] = [
     ],
   },
   {
-    // 15 real landmarks → 2 antennas each = 30 total
+
     name: 'Timișoara', code: 'T', antennaCount: 30,
     neighborhoods: [
-      { name: 'Piața Victoriei',       lat: 45.7538, lon: 21.2257 }, // verified latitude.to
-      { name: 'Gara Timișoara Nord',   lat: 45.7509, lon: 21.2078 }, // verified from search
-      { name: 'Iulius Town',           lat: 45.7667, lon: 21.2286 }, // verified Waze
+      { name: 'Piața Victoriei',       lat: 45.7538, lon: 21.2257 },
+      { name: 'Gara Timișoara Nord',   lat: 45.7509, lon: 21.2078 },
+      { name: 'Iulius Town',           lat: 45.7667, lon: 21.2286 },
       { name: 'Piața Unirii',          lat: 45.7568, lon: 21.2265 },
       { name: 'Catedrala Mitropolitană', lat: 45.7521, lon: 21.2264 },
       { name: 'Universitatea de Vest', lat: 45.7470, lon: 21.2265 },
@@ -239,13 +238,12 @@ const CITIES: CityConfig[] = [
     ],
   },
   {
-    // 15 real landmarks → 2 antennas each = 30 total
     name: 'Iași', code: 'I', antennaCount: 30,
     neighborhoods: [
-      { name: 'Palas Mall',            lat: 47.1577, lon: 27.5895 }, // verified tripexpress
-      { name: 'Gara Iași',             lat: 47.1656, lon: 27.5699 }, // verified from search
-      { name: 'Parcul Copou',          lat: 47.1788, lon: 27.5672 }, // verified from search
-      { name: 'Palatul Culturii',      lat: 47.1573, lon: 27.5869 }, // verified from search
+      { name: 'Palas Mall',            lat: 47.1577, lon: 27.5895 },
+      { name: 'Gara Iași',             lat: 47.1656, lon: 27.5699 },
+      { name: 'Parcul Copou',          lat: 47.1788, lon: 27.5672 },
+      { name: 'Palatul Culturii',      lat: 47.1573, lon: 27.5869 },
       { name: 'Universitatea UAIC',    lat: 47.1563, lon: 27.5892 },
       { name: 'Piața Unirii',          lat: 47.1590, lon: 27.5866 },
       { name: 'Spital Sf. Spiridon',   lat: 47.1606, lon: 27.5959 },
@@ -275,12 +273,11 @@ const CITIES: CityConfig[] = [
     ],
   },
   {
-    // 10 real landmarks → 2 antennas each = 20 total
     name: 'Constanța', code: 'K', antennaCount: 20,
     neighborhoods: [
       { name: 'Cazinoul Constanța',    lat: 44.1762, lon: 28.6534 },
       { name: 'Portul Constanța',      lat: 44.1553, lon: 28.6622 },
-      { name: 'Universitatea Ovidius', lat: 44.1944, lon: 28.6504 }, // verified maps.me
+      { name: 'Universitatea Ovidius', lat: 44.1944, lon: 28.6504 },
       { name: 'Gara Constanța',        lat: 44.1771, lon: 28.6343 },
       { name: 'Aqua Magic Mamaia',     lat: 44.2268, lon: 28.6387 },
       { name: 'Tomis Mall',            lat: 44.1651, lon: 28.6264 },
@@ -301,7 +298,6 @@ const CITIES: CityConfig[] = [
     ],
   },
   {
-    // 10 real landmarks → 2 antennas each = 20 total
     name: 'Craiova', code: 'V', antennaCount: 20,
     neighborhoods: [
       { name: 'Centrul Vechi',         lat: 44.3193, lon: 23.7949 },
@@ -327,10 +323,9 @@ const CITIES: CityConfig[] = [
     ],
   },
   {
-    // 10 real landmarks → 2 antennas each = 20 total
     name: 'Brașov', code: 'R', antennaCount: 20,
     neighborhoods: [
-      { name: 'Piața Sfatului',        lat: 45.6408, lon: 25.5883 }, // verified from search
+      { name: 'Piața Sfatului',        lat: 45.6408, lon: 25.5883 },
       { name: 'Gara Brașov',           lat: 45.6501, lon: 25.6108 },
       { name: 'Mall Coresi',           lat: 45.6517, lon: 25.6226 },
       { name: 'Universitatea Transilvania', lat: 45.6478, lon: 25.6094 },
@@ -353,7 +348,6 @@ const CITIES: CityConfig[] = [
     ],
   },
   {
-    // 10 real landmarks → 2 antennas each = 20 total
     name: 'Galați', code: 'G', antennaCount: 20,
     neighborhoods: [
       { name: 'Portul Galați',         lat: 45.4353, lon: 28.0493 },
@@ -379,7 +373,6 @@ const CITIES: CityConfig[] = [
     ],
   },
   {
-    // 10 real landmarks → 2 antennas each = 20 total
     name: 'Ploiești', code: 'P', antennaCount: 20,
     neighborhoods: [
       { name: 'Gara Ploiești Sud',     lat: 44.9369, lon: 26.0225 },
@@ -405,13 +398,12 @@ const CITIES: CityConfig[] = [
     ],
   },
   {
-    // 10 real landmarks → 2 antennas each = 20 total
     name: 'Oradea', code: 'O', antennaCount: 22,
     neighborhoods: [
       { name: 'Cetatea Oradea',        lat: 47.0621, lon: 21.9378 },
       { name: 'Gara Oradea',           lat: 47.0556, lon: 21.9229 },
       { name: 'ERA Shopping Park',     lat: 47.0889, lon: 21.9399 },
-      { name: 'Universitatea Oradea',  lat: 47.0407, lon: 21.9187 }, // verified latitude.to
+      { name: 'Universitatea Oradea',  lat: 47.0407, lon: 21.9187 },
       { name: 'Parcul Petőfi',         lat: 47.0700, lon: 21.9271 },
       { name: 'Piața Unirii',          lat: 47.0622, lon: 21.9293 },
       { name: 'Spital Municipal',      lat: 47.0666, lon: 21.9164 },
@@ -430,6 +422,512 @@ const CITIES: CityConfig[] = [
       { name: 'Cartier Grigorescu Oradea', lat: 47.0450, lon: 21.9300 },
     ],
   },
+  {
+    name: 'Alba Iulia', code: 'AB', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Cetatea Alba Carolina',      lat: 46.0636, lon: 23.5729 },
+      { name: 'Piața Iuliu Maniu',           lat: 46.0648, lon: 23.5793 },
+      { name: 'Gara Alba Iulia',             lat: 46.0769, lon: 23.5713 },
+      { name: 'Universitatea 1 Decembrie',   lat: 46.0591, lon: 23.5809 },
+      { name: 'Spital Județean Alba',        lat: 46.0650, lon: 23.5870 },
+      { name: 'Piața Cetății',               lat: 46.0645, lon: 23.5736 },
+      { name: 'Piața Consiliului',           lat: 46.0685, lon: 23.5790 },
+      { name: 'Mall Alba',                   lat: 46.0590, lon: 23.5750 },
+    ],
+  },
+  {
+    name: 'Arad', code: 'AR', antennaCount: 15,
+    neighborhoods: [
+      { name: 'Piața Avram Iancu',           lat: 46.1830, lon: 21.3126 },
+      { name: 'Gara Arad',                   lat: 46.1716, lon: 21.3108 },
+      { name: 'Complexul Mureșul',           lat: 46.1960, lon: 21.3190 },
+      { name: 'Universitatea Aurel Vlaicu',  lat: 46.1780, lon: 21.3380 },
+      { name: 'Spital Județean Arad',        lat: 46.1840, lon: 21.3260 },
+      { name: 'Teatrul Ioan Slavici',        lat: 46.1836, lon: 21.3130 },
+      { name: 'Parcul Reconcilierii',        lat: 46.1874, lon: 21.3163 },
+      { name: 'Piața Podgoria',              lat: 46.1760, lon: 21.3060 },
+      { name: 'Piața Mihai Viteazul',        lat: 46.1812, lon: 21.3100 },
+      { name: 'Cetatea Aradului',            lat: 46.1738, lon: 21.2947 },
+      { name: 'Piața 6 Vânători',            lat: 46.1700, lon: 21.3150 },
+      { name: 'Stadionul Francisc Neuman',   lat: 46.1930, lon: 21.3250 },
+      { name: 'Mall Atrium Arad',            lat: 46.1930, lon: 21.3300 },
+      { name: 'Piața Catedralei',            lat: 46.1826, lon: 21.3131 },
+      { name: 'Gara Arad Vest',              lat: 46.1750, lon: 21.3000 },
+    ],
+  },
+  {
+    name: 'Pitești', code: 'AG', antennaCount: 15,
+    neighborhoods: [
+      { name: 'Piața Vasile Milea',          lat: 44.8567, lon: 24.8722 },
+      { name: 'Gara Pitești',                lat: 44.8628, lon: 24.8707 },
+      { name: 'Piața Prundu',                lat: 44.8527, lon: 24.8730 },
+      { name: 'Universitatea Pitești',       lat: 44.8588, lon: 24.8646 },
+      { name: 'Spital Județean Argeș',       lat: 44.8650, lon: 24.8780 },
+      { name: 'Stadionul Nicolae Dobrin',    lat: 44.8510, lon: 24.8830 },
+      { name: 'Piața Găvana',               lat: 44.8695, lon: 24.8836 },
+      { name: 'Parcul Lunca Argeșului',      lat: 44.8556, lon: 24.8590 },
+      { name: 'Mall Pitești',                lat: 44.8510, lon: 24.8840 },
+      { name: 'Complexul Trivale',           lat: 44.8728, lon: 24.8562 },
+      { name: 'Piața Tudor Vladimirescu',    lat: 44.8622, lon: 24.8752 },
+      { name: 'Piața Eroilor',               lat: 44.8539, lon: 24.8693 },
+      { name: 'Kaufland Pitești',            lat: 44.8480, lon: 24.8760 },
+      { name: 'Piața Traian Pitești',        lat: 44.8580, lon: 24.8660 },
+      { name: 'Piața 1 Decembrie Pitești',   lat: 44.8510, lon: 24.8670 },
+    ],
+  },
+  {
+    name: 'Bacău', code: 'BC', antennaCount: 12,
+    neighborhoods: [
+      { name: 'Piața Centrală Bacău',        lat: 46.5672, lon: 26.9130 },
+      { name: 'Gara Bacău',                  lat: 46.5578, lon: 26.9070 },
+      { name: 'Universitatea Bacău',         lat: 46.5692, lon: 26.9068 },
+      { name: 'Spital Județean Bacău',       lat: 46.5730, lon: 26.9230 },
+      { name: 'Mall Arena Bacău',            lat: 46.5570, lon: 26.9170 },
+      { name: 'Piața Revoluției Bacău',      lat: 46.5680, lon: 26.9140 },
+      { name: 'Parcul Cancicov',             lat: 46.5680, lon: 26.9100 },
+      { name: 'Piața Mărgineni',             lat: 46.5800, lon: 26.9150 },
+      { name: 'Stadionul Municipal Bacău',   lat: 46.5730, lon: 26.9100 },
+      { name: 'Piața Traian Bacău',          lat: 46.5650, lon: 26.9160 },
+      { name: 'Gara Bacău Sud',              lat: 46.5540, lon: 26.9120 },
+      { name: 'Piața CFR Bacău',             lat: 46.5580, lon: 26.9080 },
+    ],
+  },
+  {
+    name: 'Bistrița', code: 'BN', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Piața Centrală Bistrița',     lat: 47.1313, lon: 24.4997 },
+      { name: 'Gara Bistrița',               lat: 47.1425, lon: 24.5080 },
+      { name: 'Mall Bistrița',               lat: 47.1260, lon: 24.5120 },
+      { name: 'Spital Județean Bistrița',    lat: 47.1343, lon: 24.5055 },
+      { name: 'Piața Unirii Bistrița',       lat: 47.1315, lon: 24.4995 },
+      { name: 'Parcul Central Bistrița',     lat: 47.1335, lon: 24.4960 },
+      { name: 'Piața Petru Rareș',           lat: 47.1332, lon: 24.4990 },
+      { name: 'Universitatea Bistrița',      lat: 47.1310, lon: 24.4950 },
+    ],
+  },
+  {
+    name: 'Botoșani', code: 'BT', antennaCount: 10,
+    neighborhoods: [
+      { name: 'Piața Revoluției Botoșani',   lat: 47.7466, lon: 26.6625 },
+      { name: 'Gara Botoșani',               lat: 47.7350, lon: 26.6480 },
+      { name: 'Spital Județean Botoșani',    lat: 47.7490, lon: 26.6700 },
+      { name: 'Mall Uvertura Botoșani',      lat: 47.7450, lon: 26.6760 },
+      { name: 'Parcul Mihai Eminescu',       lat: 47.7480, lon: 26.6640 },
+      { name: 'Piața Mihai Eminescu',        lat: 47.7432, lon: 26.6598 },
+      { name: 'Stadionul Municipal Botoșani', lat: 47.7380, lon: 26.6520 },
+      { name: 'Piața 1 Decembrie',           lat: 47.7500, lon: 26.6670 },
+      { name: 'Universitatea Botoșani',      lat: 47.7490, lon: 26.6650 },
+      { name: 'Piața Centrală Botoșani',     lat: 47.7467, lon: 26.6625 },
+    ],
+  },
+  {
+    name: 'Brăila', code: 'BR', antennaCount: 15,
+    neighborhoods: [
+      { name: 'Piața Traian Brăila',         lat: 45.2694, lon: 27.9570 },
+      { name: 'Gara Brăila',                 lat: 45.2773, lon: 27.9750 },
+      { name: 'Portul Brăila',               lat: 45.2640, lon: 27.9740 },
+      { name: 'Universitatea Brăila',        lat: 45.2660, lon: 27.9580 },
+      { name: 'Spital Județean Brăila',      lat: 45.2680, lon: 27.9680 },
+      { name: 'Piața Independenței Brăila',  lat: 45.2700, lon: 27.9580 },
+      { name: 'Parcul Monument',             lat: 45.2730, lon: 27.9590 },
+      { name: 'Mall Brăila',                 lat: 45.2580, lon: 27.9560 },
+      { name: 'Piața Picardie',              lat: 45.2820, lon: 27.9560 },
+      { name: 'Stadionul Municipal Brăila',  lat: 45.2740, lon: 27.9530 },
+      { name: 'Piața Dorobanți Brăila',      lat: 45.2650, lon: 27.9500 },
+      { name: 'Piața M. Kogălniceanu',       lat: 45.2710, lon: 27.9540 },
+      { name: 'Faleza Brăila',               lat: 45.2660, lon: 27.9780 },
+      { name: 'Piața Sfântu Arhangheli',     lat: 45.2790, lon: 27.9550 },
+      { name: 'Cartier Hipodrom Brăila',     lat: 45.2600, lon: 27.9480 },
+    ],
+  },
+  {
+    name: 'Buzău', code: 'BZ', antennaCount: 10,
+    neighborhoods: [
+      { name: 'Piața Daciei Buzău',          lat: 45.1503, lon: 26.8224 },
+      { name: 'Gara Buzău',                  lat: 45.1430, lon: 26.8220 },
+      { name: 'Spital Județean Buzău',       lat: 45.1562, lon: 26.8228 },
+      { name: 'Parcul Crâng',               lat: 45.1620, lon: 26.8170 },
+      { name: 'Piața Marghiloman',           lat: 45.1560, lon: 26.8190 },
+      { name: 'Stadionul Municipal Buzău',   lat: 45.1500, lon: 26.8150 },
+      { name: 'Mall Buzău',                  lat: 45.1450, lon: 26.8300 },
+      { name: 'Piața 1 Decembrie Buzău',     lat: 45.1480, lon: 26.8240 },
+      { name: 'Universitatea Buzău',         lat: 45.1540, lon: 26.8200 },
+      { name: 'Piața Centrală Buzău',        lat: 45.1500, lon: 26.8210 },
+    ],
+  },
+  {
+    name: 'Călărași', code: 'CL', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Piața Republicii Călărași',   lat: 44.2018, lon: 27.3306 },
+      { name: 'Gara Călărași',               lat: 44.2060, lon: 27.3250 },
+      { name: 'Spital Județean Călărași',    lat: 44.2050, lon: 27.3280 },
+      { name: 'Piața Bărăganului',           lat: 44.2000, lon: 27.3320 },
+      { name: 'Parcul Lunca Dunării',        lat: 44.1960, lon: 27.3400 },
+      { name: 'Piața Mihai Viteazul Călărași', lat: 44.1990, lon: 27.3310 },
+      { name: 'Gara Călărași Sud',           lat: 44.1950, lon: 27.3350 },
+      { name: 'Piața Dâmbovița Călărași',    lat: 44.2030, lon: 27.3260 },
+    ],
+  },
+  {
+    name: 'Sfântu Gheorghe', code: 'CV', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Piața Libertății Sfântu Gheorghe', lat: 45.8652, lon: 25.7880 },
+      { name: 'Gara Sfântu Gheorghe',        lat: 45.8600, lon: 25.7780 },
+      { name: 'Spital Județean Covasna',     lat: 45.8720, lon: 25.7900 },
+      { name: 'Piața 1 Decembrie Sf. Gheorghe', lat: 45.8630, lon: 25.7850 },
+      { name: 'Parcul Central Sf. Gheorghe', lat: 45.8660, lon: 25.7870 },
+      { name: 'Stadionul Municipal Sf. Gheorghe', lat: 45.8590, lon: 25.7920 },
+      { name: 'Piața Mihai Viteazul Sf. Gheorghe', lat: 45.8680, lon: 25.7890 },
+      { name: 'Universitatea Covasna',       lat: 45.8640, lon: 25.7830 },
+    ],
+  },
+  {
+    name: 'Târgoviște', code: 'DB', antennaCount: 10,
+    neighborhoods: [
+      { name: 'Turnul Chindiei',             lat: 44.9265, lon: 25.4568 },
+      { name: 'Gara Târgoviște',             lat: 44.9370, lon: 25.4680 },
+      { name: 'Piața Tricolorului',          lat: 44.9256, lon: 25.4580 },
+      { name: 'Universitatea Valahia',       lat: 44.9275, lon: 25.4547 },
+      { name: 'Spital Județean Dâmbovița',   lat: 44.9300, lon: 25.4620 },
+      { name: 'Parcul Chindia',              lat: 44.9260, lon: 25.4560 },
+      { name: 'Piața Mihai Viteazul Târgoviște', lat: 44.9240, lon: 25.4540 },
+      { name: 'Stadionul Municipal Târgoviște', lat: 44.9280, lon: 25.4700 },
+      { name: 'Piața Libertății Târgoviște', lat: 44.9240, lon: 25.4600 },
+      { name: 'Mall Târgoviște',             lat: 44.9220, lon: 25.4510 },
+    ],
+  },
+  {
+    name: 'Giurgiu', code: 'GR', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Piața Centrală Giurgiu',      lat: 43.9024, lon: 25.9663 },
+      { name: 'Gara Giurgiu',                lat: 43.8980, lon: 25.9710 },
+      { name: 'Portul Giurgiu',              lat: 43.8900, lon: 25.9750 },
+      { name: 'Spital Județean Giurgiu',     lat: 43.9040, lon: 25.9640 },
+      { name: 'Piața Democrației Giurgiu',   lat: 43.9020, lon: 25.9640 },
+      { name: 'Piața Mihai Viteazul Giurgiu', lat: 43.9060, lon: 25.9680 },
+      { name: 'Parcul Central Giurgiu',      lat: 43.9050, lon: 25.9600 },
+      { name: 'Piața 1 Decembrie Giurgiu',   lat: 43.9080, lon: 25.9650 },
+    ],
+  },
+  {
+    name: 'Târgu Jiu', code: 'GJ', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Coloana Infinitului',         lat: 45.0403, lon: 23.2869 },
+      { name: 'Poarta Sărutului',            lat: 45.0300, lon: 23.2730 },
+      { name: 'Gara Târgu Jiu',              lat: 45.0430, lon: 23.2720 },
+      { name: 'Spital Județean Gorj',        lat: 45.0380, lon: 23.2810 },
+      { name: 'Universitatea C. Brâncuși',   lat: 45.0340, lon: 23.2780 },
+      { name: 'Piața Victoriei Târgu Jiu',   lat: 45.0350, lon: 23.2780 },
+      { name: 'Parcul Central Târgu Jiu',    lat: 45.0360, lon: 23.2760 },
+      { name: 'Piața Prefecturii',           lat: 45.0360, lon: 23.2740 },
+    ],
+  },
+  {
+    name: 'Miercurea Ciuc', code: 'HR', antennaCount: 6,
+    neighborhoods: [
+      { name: 'Piața Cetății Miercurea Ciuc', lat: 46.3600, lon: 25.8010 },
+      { name: 'Gara Miercurea Ciuc',         lat: 46.3540, lon: 25.8050 },
+      { name: 'Spital Județean Harghita',    lat: 46.3650, lon: 25.8020 },
+      { name: 'Parcul Central Miercurea Ciuc', lat: 46.3600, lon: 25.8000 },
+      { name: 'Stadionul Municipal Miercurea Ciuc', lat: 46.3560, lon: 25.7980 },
+      { name: 'Piața Majláth',               lat: 46.3590, lon: 25.8030 },
+    ],
+  },
+  {
+    name: 'Deva', code: 'HD', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Cetatea Devei',               lat: 45.8840, lon: 22.8961 },
+      { name: 'Piața Unirii Deva',           lat: 45.8837, lon: 22.9042 },
+      { name: 'Gara Deva',                   lat: 45.8900, lon: 22.9050 },
+      { name: 'Spital Județean Hunedoara',   lat: 45.8860, lon: 22.9100 },
+      { name: 'Piața Victoriei Deva',        lat: 45.8820, lon: 22.9000 },
+      { name: 'Parcul Central Deva',         lat: 45.8840, lon: 22.9020 },
+      { name: 'Mall Deva',                   lat: 45.8800, lon: 22.8980 },
+      { name: 'Piața 1 Decembrie Deva',      lat: 45.8870, lon: 22.9060 },
+    ],
+  },
+  {
+    name: 'Slobozia', code: 'IL', antennaCount: 6,
+    neighborhoods: [
+      { name: 'Piața Republicii Slobozia',   lat: 44.5639, lon: 27.3708 },
+      { name: 'Gara Slobozia',               lat: 44.5560, lon: 27.3580 },
+      { name: 'Spital Județean Ialomița',    lat: 44.5680, lon: 27.3730 },
+      { name: 'Piața Revoluției Slobozia',   lat: 44.5650, lon: 27.3700 },
+      { name: 'Parcul Tineretului Slobozia', lat: 44.5700, lon: 27.3720 },
+      { name: 'Piața Mihai Viteazul Slobozia', lat: 44.5620, lon: 27.3670 },
+    ],
+  },
+  {
+    name: 'Baia Mare', code: 'MM', antennaCount: 10,
+    neighborhoods: [
+      { name: 'Piața Libertății Baia Mare',  lat: 47.6567, lon: 23.5698 },
+      { name: 'Gara Baia Mare',              lat: 47.6500, lon: 23.5600 },
+      { name: 'Spital Județean Maramureș',   lat: 47.6550, lon: 23.5750 },
+      { name: 'Universitatea de Nord',       lat: 47.6600, lon: 23.5680 },
+      { name: 'Mall Baia Mare',              lat: 47.6620, lon: 23.5800 },
+      { name: 'Parcul Municipal Baia Mare',  lat: 47.6550, lon: 23.5700 },
+      { name: 'Piața Revoluției Baia Mare',  lat: 47.6570, lon: 23.5720 },
+      { name: 'Stadionul Municipal Baia Mare', lat: 47.6490, lon: 23.5720 },
+      { name: 'Piața Izvoarele',             lat: 47.6530, lon: 23.5660 },
+      { name: 'Cartier Craica',              lat: 47.6500, lon: 23.5640 },
+    ],
+  },
+  {
+    name: 'Drobeta-Turnu Severin', code: 'MH', antennaCount: 10,
+    neighborhoods: [
+      { name: 'Piața Centrală Dr. Tr. Severin', lat: 44.6352, lon: 22.6616 },
+      { name: 'Gara Drobeta-Turnu Severin',  lat: 44.6430, lon: 22.6690 },
+      { name: 'Portul Turnu Severin',        lat: 44.6310, lon: 22.6720 },
+      { name: 'Spital Județean Mehedinți',   lat: 44.6380, lon: 22.6680 },
+      { name: 'Universitatea Mehedinți',     lat: 44.6350, lon: 22.6640 },
+      { name: 'Parcul Rozelor Severin',      lat: 44.6360, lon: 22.6600 },
+      { name: 'Ruinele Podului lui Traian',  lat: 44.6310, lon: 22.6590 },
+      { name: 'Piața 1 Mai Severin',         lat: 44.6400, lon: 22.6660 },
+      { name: 'Piața Victoriei Severin',     lat: 44.6370, lon: 22.6630 },
+      { name: 'Piața Decebal Severin',       lat: 44.6340, lon: 22.6610 },
+    ],
+  },
+  {
+    name: 'Târgu Mureș', code: 'MS', antennaCount: 12,
+    neighborhoods: [
+      { name: 'Piața Trandafirilor',         lat: 46.5388, lon: 24.5578 },
+      { name: 'Gara Târgu Mureș',            lat: 46.5270, lon: 24.5630 },
+      { name: 'Spital Județean Mureș',       lat: 46.5450, lon: 24.5680 },
+      { name: 'Universitatea de Medicină Târgu Mureș', lat: 46.5410, lon: 24.5600 },
+      { name: 'Piața Victoriei Târgu Mureș', lat: 46.5380, lon: 24.5560 },
+      { name: 'Parcul Municipal Târgu Mureș', lat: 46.5400, lon: 24.5540 },
+      { name: 'Mall Plaza Mureș',            lat: 46.5270, lon: 24.5770 },
+      { name: 'Stadionul Municipal Târgu Mureș', lat: 46.5330, lon: 24.5540 },
+      { name: 'Aeroportul Târgu Mureș',      lat: 46.4683, lon: 24.4122 },
+      { name: 'Piața Bernady György',        lat: 46.5392, lon: 24.5592 },
+      { name: 'Piața Consiliului Târgu Mureș', lat: 46.5370, lon: 24.5570 },
+      { name: 'Cartier Tudor',               lat: 46.5480, lon: 24.5550 },
+    ],
+  },
+  {
+    name: 'Piatra Neamț', code: 'NT', antennaCount: 10,
+    neighborhoods: [
+      { name: 'Piața Libertății Piatra Neamț', lat: 46.9260, lon: 26.3698 },
+      { name: 'Gara Piatra Neamț',           lat: 46.9300, lon: 26.3570 },
+      { name: 'Spital Județean Neamț',       lat: 46.9300, lon: 26.3750 },
+      { name: 'Parcul Cozla',                lat: 46.9350, lon: 26.3690 },
+      { name: 'Piața Ștefan cel Mare Piatra Neamț', lat: 46.9270, lon: 26.3685 },
+      { name: 'Stadionul Ceahlăul',          lat: 46.9200, lon: 26.3640 },
+      { name: 'Piața 22 Decembrie Piatra Neamț', lat: 46.9250, lon: 26.3660 },
+      { name: 'Complexul Comercial Piatra Neamț', lat: 46.9230, lon: 26.3700 },
+      { name: 'Universitatea Neamț',         lat: 46.9280, lon: 26.3710 },
+      { name: 'Cartier Dărmănești',          lat: 46.9100, lon: 26.3780 },
+    ],
+  },
+  {
+    name: 'Slatina', code: 'OT', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Piața Victoriei Slatina',     lat: 44.4307, lon: 24.3650 },
+      { name: 'Gara Slatina',                lat: 44.4260, lon: 24.3560 },
+      { name: 'Spital Județean Olt',         lat: 44.4340, lon: 24.3680 },
+      { name: 'Parcul Tineretului Slatina',  lat: 44.4290, lon: 24.3640 },
+      { name: 'Piața Mihai Viteazul Slatina', lat: 44.4310, lon: 24.3660 },
+      { name: 'Stadionul Municipal Slatina', lat: 44.4280, lon: 24.3720 },
+      { name: 'Alutus Mall',                 lat: 44.4350, lon: 24.3600 },
+      { name: 'Universitatea Slatina',       lat: 44.4320, lon: 24.3630 },
+    ],
+  },
+  {
+    name: 'Zalău', code: 'SJ', antennaCount: 6,
+    neighborhoods: [
+      { name: 'Piața Iuliu Maniu Zalău',     lat: 47.1860, lon: 23.0576 },
+      { name: 'Gara Zalău',                  lat: 47.1750, lon: 23.0490 },
+      { name: 'Spital Județean Sălaj',       lat: 47.1900, lon: 23.0600 },
+      { name: 'Piața Libertății Zalău',      lat: 47.1870, lon: 23.0570 },
+      { name: 'Parcul Central Zalău',        lat: 47.1880, lon: 23.0550 },
+      { name: 'Universitatea Zalău',         lat: 47.1840, lon: 23.0550 },
+    ],
+  },
+  {
+    name: 'Satu Mare', code: 'SM', antennaCount: 10,
+    neighborhoods: [
+      { name: 'Piața Libertății Satu Mare',  lat: 47.7920, lon: 22.8810 },
+      { name: 'Gara Satu Mare',              lat: 47.7875, lon: 22.8847 },
+      { name: 'Spital Județean Satu Mare',   lat: 47.7960, lon: 22.8830 },
+      { name: 'Universitatea de Nord Satu Mare', lat: 47.7890, lon: 22.8870 },
+      { name: 'Piața 25 Octombrie',          lat: 47.7930, lon: 22.8790 },
+      { name: 'Parcul Someș',               lat: 47.7940, lon: 22.8830 },
+      { name: 'Stadionul Municipal Satu Mare', lat: 47.7870, lon: 22.8780 },
+      { name: 'Mall Satu Mare',              lat: 47.7840, lon: 22.8920 },
+      { name: 'Piața Vasile Lucaciu',        lat: 47.7910, lon: 22.8800 },
+      { name: 'Piața 1 Decembrie Satu Mare', lat: 47.7900, lon: 22.8840 },
+    ],
+  },
+  {
+    name: 'Sibiu', code: 'SB', antennaCount: 12,
+    neighborhoods: [
+      { name: 'Piața Mare Sibiu',            lat: 45.7978, lon: 24.1526 },
+      { name: 'Gara Sibiu',                  lat: 45.7990, lon: 24.1420 },
+      { name: 'Mall Promenada Sibiu',        lat: 45.8060, lon: 24.1580 },
+      { name: 'Universitatea Lucian Blaga',  lat: 45.7950, lon: 24.1480 },
+      { name: 'Spital Județean Sibiu',       lat: 45.7920, lon: 24.1540 },
+      { name: 'Piața Mică Sibiu',            lat: 45.7971, lon: 24.1535 },
+      { name: 'Piața Unirii Sibiu',          lat: 45.7990, lon: 24.1510 },
+      { name: 'Parcul Sub Arini',            lat: 45.7910, lon: 24.1510 },
+      { name: 'Piața Cibin',                 lat: 45.8000, lon: 24.1450 },
+      { name: 'Aeroportul Sibiu',            lat: 45.7856, lon: 24.0919 },
+      { name: 'Stadionul Municipal Sibiu',   lat: 45.7930, lon: 24.1450 },
+      { name: 'Cartier Hipodrom Sibiu',      lat: 45.8040, lon: 24.1590 },
+    ],
+  },
+  {
+    name: 'Suceava', code: 'SV', antennaCount: 10,
+    neighborhoods: [
+      { name: 'Piața 22 Decembrie Suceava',  lat: 47.6390, lon: 26.2503 },
+      { name: 'Gara Suceava',                lat: 47.6480, lon: 26.2720 },
+      { name: 'Cetatea de Scaun Suceava',    lat: 47.6430, lon: 26.2560 },
+      { name: 'Universitatea Ștefan cel Mare', lat: 47.6350, lon: 26.2450 },
+      { name: 'Spital Județean Suceava',     lat: 47.6380, lon: 26.2520 },
+      { name: 'Parcul Municipal Suceava',    lat: 47.6400, lon: 26.2480 },
+      { name: 'Mall Iulius Suceava',         lat: 47.6310, lon: 26.2440 },
+      { name: 'Piața 1 Decembrie Suceava',   lat: 47.6420, lon: 26.2540 },
+      { name: 'Stadionul Municipal Suceava', lat: 47.6350, lon: 26.2580 },
+      { name: 'Piața Centrală Suceava',      lat: 47.6390, lon: 26.2510 },
+    ],
+  },
+  {
+    name: 'Alexandria', code: 'TR', antennaCount: 6,
+    neighborhoods: [
+      { name: 'Piața Libertății Alexandria', lat: 43.9752, lon: 25.3366 },
+      { name: 'Gara Alexandria',             lat: 43.9700, lon: 25.3310 },
+      { name: 'Spital Județean Teleorman',   lat: 43.9790, lon: 25.3400 },
+      { name: 'Parcul Tineretului Alexandria', lat: 43.9770, lon: 25.3380 },
+      { name: 'Piața Dunării Alexandria',    lat: 43.9740, lon: 25.3350 },
+      { name: 'Piața 1 Decembrie Alexandria', lat: 43.9760, lon: 25.3340 },
+    ],
+  },
+  {
+    name: 'Tulcea', code: 'TL', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Piața Civică Tulcea',         lat: 45.1787, lon: 28.8028 },
+      { name: 'Portul Tulcea',               lat: 45.1720, lon: 28.8040 },
+      { name: 'Gara Tulcea',                 lat: 45.1760, lon: 28.7920 },
+      { name: 'Spital Județean Tulcea',      lat: 45.1820, lon: 28.8060 },
+      { name: 'Universitatea Tulcea',        lat: 45.1800, lon: 28.8040 },
+      { name: 'Parcul Vivariumului',         lat: 45.1770, lon: 28.8010 },
+      { name: 'Piața 1 Decembrie Tulcea',    lat: 45.1810, lon: 28.8000 },
+      { name: 'Piața Civică Nouă Tulcea',    lat: 45.1790, lon: 28.8050 },
+    ],
+  },
+  {
+    name: 'Râmnicu Vâlcea', code: 'VL', antennaCount: 10,
+    neighborhoods: [
+      { name: 'Piața Mircea cel Bătrân',     lat: 45.0992, lon: 24.3693 },
+      { name: 'Gara Râmnicu Vâlcea',         lat: 45.1060, lon: 24.3670 },
+      { name: 'Spital Județean Vâlcea',      lat: 45.1020, lon: 24.3720 },
+      { name: 'Universitatea Vâlcea',        lat: 45.0970, lon: 24.3650 },
+      { name: 'Parcul Zăvoi',               lat: 45.0980, lon: 24.3680 },
+      { name: 'Piața Centrală Rm. Vâlcea',   lat: 45.1000, lon: 24.3700 },
+      { name: 'Mall Râmnicu Vâlcea',         lat: 45.0940, lon: 24.3750 },
+      { name: 'Piața 1 Decembrie Rm. Vâlcea', lat: 45.0960, lon: 24.3660 },
+      { name: 'Stadionul Municipal Rm. Vâlcea', lat: 45.0930, lon: 24.3720 },
+      { name: 'Piața Eroilor Rm. Vâlcea',    lat: 45.1010, lon: 24.3680 },
+    ],
+  },
+  {
+    name: 'Vaslui', code: 'VS', antennaCount: 6,
+    neighborhoods: [
+      { name: 'Piața Civică Vaslui',         lat: 46.6384, lon: 27.7291 },
+      { name: 'Gara Vaslui',                 lat: 46.6350, lon: 27.7200 },
+      { name: 'Spital Județean Vaslui',      lat: 46.6410, lon: 27.7320 },
+      { name: 'Parcul Municipal Vaslui',     lat: 46.6390, lon: 27.7280 },
+      { name: 'Piața Ștefan cel Mare Vaslui', lat: 46.6370, lon: 27.7270 },
+      { name: 'Piața 1 Decembrie Vaslui',    lat: 46.6400, lon: 27.7300 },
+    ],
+  },
+  {
+    name: 'Focșani', code: 'VN', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Piața Unirii Focșani',        lat: 45.6959, lon: 27.1858 },
+      { name: 'Gara Focșani',                lat: 45.6900, lon: 27.1940 },
+      { name: 'Spital Județean Vrancea',     lat: 45.6990, lon: 27.1870 },
+      { name: 'Universitatea Focșani',       lat: 45.6970, lon: 27.1830 },
+      { name: 'Parcul Unirea Focșani',       lat: 45.6940, lon: 27.1860 },
+      { name: 'Piața Revoluției Focșani',    lat: 45.6950, lon: 27.1840 },
+      { name: 'Stadionul Municipal Focșani', lat: 45.6920, lon: 27.1910 },
+      { name: 'Mall Vrancea',                lat: 45.6930, lon: 27.1920 },
+    ],
+  },
+  {
+    name: 'Vatra Dornei', code: 'VD', antennaCount: 5,
+    neighborhoods: [
+      { name: 'Parcul Central Vatra Dornei',  lat: 47.3531, lon: 25.3600 },
+      { name: 'Gara Vatra Dornei',            lat: 47.3490, lon: 25.3630 },
+      { name: 'Casino Vatra Dornei',          lat: 47.3530, lon: 25.3570 },
+      { name: 'Spital Orășenesc Vatra Dornei', lat: 47.3560, lon: 25.3610 },
+      { name: 'Stațiunea Balneară Dornei',    lat: 47.3510, lon: 25.3580 },
+    ],
+  },
+  {
+    name: 'Brad', code: 'BD', antennaCount: 5,
+    neighborhoods: [
+      { name: 'Piața Libertății Brad',        lat: 46.1319, lon: 22.4378 },
+      { name: 'Gara Brad',                    lat: 46.1350, lon: 22.4410 },
+      { name: 'Spital Orășenesc Brad',        lat: 46.1300, lon: 22.4350 },
+      { name: 'Parcul Central Brad',          lat: 46.1310, lon: 22.4370 },
+      { name: 'Piața Mihai Viteazul Brad',    lat: 46.1325, lon: 22.4390 },
+    ],
+  },
+  {
+    name: 'Beiuș', code: 'BU', antennaCount: 5,
+    neighborhoods: [
+      { name: 'Piața Centrală Beiuș',         lat: 46.6706, lon: 22.3533 },
+      { name: 'Gara Beiuș',                   lat: 46.6680, lon: 22.3500 },
+      { name: 'Liceul Samuil Vulcan',         lat: 46.6720, lon: 22.3550 },
+      { name: 'Spital Orășenesc Beiuș',       lat: 46.6730, lon: 22.3560 },
+      { name: 'Piața Unirii Beiuș',           lat: 46.6710, lon: 22.3540 },
+    ],
+  },
+  {
+    name: 'Reșița', code: 'CS', antennaCount: 8,
+    neighborhoods: [
+      { name: 'Piața Republicii Reșița',      lat: 45.2956, lon: 21.8883 },
+      { name: 'Gara Reșița Nord',             lat: 45.3050, lon: 21.8850 },
+      { name: 'Gara Reșița Sud',              lat: 45.2860, lon: 21.8940 },
+      { name: 'Spital Județean Caraș-Severin', lat: 45.2980, lon: 21.8900 },
+      { name: 'Universitatea Eftimie Murgu',  lat: 45.2940, lon: 21.8870 },
+      { name: 'Parcul Tricolorului Reșița',   lat: 45.2960, lon: 21.8860 },
+      { name: 'Piața Muncii Reșița',          lat: 45.2970, lon: 21.8890 },
+      { name: 'Piața Eroilor Reșița',         lat: 45.2950, lon: 21.8840 },
+    ],
+  },
+  {
+    name: 'Vișeu de Sus', code: 'VI', antennaCount: 5,
+    neighborhoods: [
+      { name: 'Gara Vișeu de Sus (Mocănița)', lat: 47.7091, lon: 24.4364 },
+      { name: 'Piața Centrală Vișeu de Sus',  lat: 47.7100, lon: 24.4380 },
+      { name: 'Spital Orășenesc Vișeu',       lat: 47.7120, lon: 24.4400 },
+      { name: 'Piața Unirii Vișeu de Sus',    lat: 47.7080, lon: 24.4350 },
+      { name: 'Parcul Central Vișeu de Sus',  lat: 47.7110, lon: 24.4370 },
+    ],
+  },
+  {
+    name: 'Gheorgheni', code: 'GH', antennaCount: 5,
+    neighborhoods: [
+      { name: 'Piața Libertății Gheorgheni',  lat: 46.7177, lon: 25.5956 },
+      { name: 'Gara Gheorgheni',              lat: 46.7150, lon: 25.6000 },
+      { name: 'Spital Orășenesc Gheorgheni',  lat: 46.7200, lon: 25.5970 },
+      { name: 'Parcul Central Gheorgheni',    lat: 46.7185, lon: 25.5945 },
+      { name: 'Piața Petőfi Gheorgheni',      lat: 46.7165, lon: 25.5960 },
+    ],
+  },
+  {
+    name: 'Bârlad', code: 'BL', antennaCount: 7,
+    neighborhoods: [
+      { name: 'Piața Republicii Bârlad',      lat: 46.2282, lon: 27.6686 },
+      { name: 'Gara Bârlad',                  lat: 46.2240, lon: 27.6640 },
+      { name: 'Spital Municipal Bârlad',      lat: 46.2310, lon: 27.6720 },
+      { name: 'Parcul Rizer Bârlad',          lat: 46.2300, lon: 27.6680 },
+      { name: 'Piața Mihai Viteazul Bârlad',  lat: 46.2270, lon: 27.6670 },
+      { name: 'Teatrul Victor Ion Popa',       lat: 46.2290, lon: 27.6700 },
+      { name: 'Piața 1 Decembrie Bârlad',     lat: 46.2260, lon: 27.6660 },
+    ],
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -446,8 +944,8 @@ function seededRandom(seed: number): () => number {
 // Place `count` antennas by cycling through neighbourhood anchors and
 // scattering each one within ~300-400 m of its anchor using Box-Muller.
 function generatePositions(
-  city: CityConfig,
-  rng: () => number,
+    city: CityConfig,
+    rng: () => number,
 ): Array<{ name: string; lat: number; lon: number }> {
   const SIGMA_LAT = 0.0003  // ~33 m — places antenna ~30-60 m from landmark
   const SIGMA_LON = 0.00036 // ~28 m at Romanian latitudes
@@ -612,8 +1110,8 @@ async function seed() {
           //   major    → only if alarm has been open > 4 h (240 min)
           //   minor / warning → no automatic incident
           const shouldCreateIncident =
-            status === 'critical' ||
-            (status === 'major' && alarmAgeMinutes > 240)
+              status === 'critical' ||
+              (status === 'major' && alarmAgeMinutes > 240)
 
           const linkedIncidentId = shouldCreateIncident ? nextIncidentId() : null
 
@@ -641,7 +1139,6 @@ async function seed() {
           if (linkedIncidentId) {
             const incidentRef    = db.collection('incidents').doc(linkedIncidentId)
             const incidentStatus = status === 'critical' ? 'IN PROGRESS' : 'ASSIGNED'
-            const assignee       = ASSIGNEES[(ci + i + ci2) % ASSIGNEES.length]
 
             incidentWriter.set(incidentRef, {
               incidentNumber: linkedIncidentId,
@@ -655,7 +1152,8 @@ async function seed() {
               impact:         status === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
               priority:       toPriority(status),
               closedDate:     null,
-              assignee,
+              assignee:       '',
+              assignees:      [],
               resolvedDate:   null,
             })
             totalIncidents++

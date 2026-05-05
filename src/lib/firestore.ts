@@ -11,6 +11,7 @@ import {
   where,
 } from 'firebase/firestore'
 import { db } from './firebase'
+import { auth } from './firebase'
 import type { Antenna, Alarm, AlarmSeverity, Incident, IncidentAssignee, Technology, UserProfile } from '@/types'
 
 export async function getAntennas(): Promise<Antenna[]> {
@@ -98,7 +99,7 @@ export async function createIncidentForAlarm(alarm: Alarm): Promise<string> {
     impact:      alarm.severity === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
     priority:    urgency,
     closedDate:  null,
-    assignee:    'USER1',
+    assignee:    '',
     assignees:   [],
     resolvedDate: null,
   } satisfies Incident)
@@ -117,7 +118,37 @@ export async function getEngineers(): Promise<UserProfile[]> {
 }
 
 export async function updateUserRole(uid: string, role: 'user' | 'engineer'): Promise<void> {
+  const idToken = await auth.currentUser?.getIdToken()
+  if (!idToken) throw new Error('Not authenticated')
+
+  const res = await fetch('/api/set-role', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ uid, role }),
+  })
+
+  if (!res.ok) throw new Error('Failed to set custom claim')
+
   await updateDoc(doc(db, 'users', uid), { role })
+}
+
+export async function getAllIncidents(): Promise<Incident[]> {
+  const q = query(
+    collection(db, 'incidents'),
+    orderBy('submitDate', 'desc')
+  )
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(d => d.data() as Incident)
+}
+
+export async function updateIncidentStatus(
+  incidentNumber: string,
+  status: Incident['status']
+): Promise<void> {
+  await updateDoc(doc(db, 'incidents', incidentNumber), { status })
 }
 
 export async function updateIncidentAssignees(
@@ -155,5 +186,16 @@ export function subscribeToAntennas(
       (doc) => ({ id: doc.id, ...doc.data() } as Antenna)
     )
     callback(antennas)
+  })
+}
+
+export function subscribeToIncidents(
+  callback: (incidents: Incident[]) => void
+): () => void {
+  return onSnapshot(collection(db, 'incidents'), (snapshot) => {
+    const incidents = snapshot.docs.map(
+      (doc) => ({ ...doc.data() } as Incident)
+    )
+    callback(incidents)
   })
 }
