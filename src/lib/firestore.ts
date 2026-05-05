@@ -156,6 +156,27 @@ export async function updateIncidentStatus(
   await updateDoc(doc(db, 'incidents', incidentNumber), { status })
 }
 
+export async function acknowledgeAssignedIncidents(
+  incidentNumbers: string[]
+): Promise<string[]> {
+  const idToken = await auth.currentUser?.getIdToken()
+  if (!idToken) throw new Error('Not authenticated')
+
+  const res = await fetch('/api/incidents/acknowledge', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ incidentNumbers }),
+  })
+
+  if (!res.ok) throw new Error('Failed to acknowledge incidents')
+
+  const data = await res.json() as { updated?: string[] }
+  return data.updated ?? []
+}
+
 export async function updateIncidentAssignees(
   incidentNumber: string,
   assignees: IncidentAssignee[]

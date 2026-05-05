@@ -15,8 +15,7 @@ import { CellTile } from './CellTile'
 import { AlarmCard, EmptyAlarm } from './AlarmCard'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/components/AuthProvider'
-import { canAcknowledgeAlarm } from '@/lib/roles'
-import { getIncidentsForCell, updateIncidentStatus } from '@/lib/firestore'
+import { acknowledgeAssignedIncidents, getIncidentsForCell } from '@/lib/firestore'
 import type { Incident } from '@/types'
 
 const POPUP_WIDTH = 360
@@ -87,19 +86,28 @@ export function AntennaPopup({
     return () => { cancelled = true }
   }, [open, antenna.id, selectedTech])
 
-  const isAssignedEngineer = profile?.role === 'engineer' &&
-    cellIncidents.some(i => (i.assignees ?? []).some(a => a.uid === profile.uid))
-  const canAck = profile?.role === 'admin' || isAssignedEngineer
+  const acknowledgeableIncidents = cellIncidents.filter(i =>
+    i.status === 'ASSIGNED' &&
+    (profile?.role === 'admin' || (i.assignees ?? []).some(a => a.uid === profile?.uid))
+  )
+  const canAck = acknowledged || acknowledgeableIncidents.length > 0
 
   async function handleAcknowledge() {
-    setAcknowledged(true)
+    if (acknowledged || acknowledgeableIncidents.length === 0) return
     onAcknowledge?.(antenna)
-    const assigned = cellIncidents.filter(i => i.status === 'ASSIGNED')
-    if (assigned.length > 0) {
-      await Promise.all(assigned.map(i => updateIncidentStatus(i.incidentNumber, 'IN PROGRESS')))
-      setCellIncidents(prev =>
-        prev.map(i => i.status === 'ASSIGNED' ? { ...i, status: 'IN PROGRESS' } : i)
+    try {
+      const updated = await acknowledgeAssignedIncidents(
+        acknowledgeableIncidents.map(i => i.incidentNumber),
       )
+      if (updated.length > 0) {
+        const updatedSet = new Set(updated)
+        setCellIncidents(prev =>
+          prev.map(i => updatedSet.has(i.incidentNumber) ? { ...i, status: 'IN PROGRESS' } : i)
+        )
+        setAcknowledged(true)
+      }
+    } catch {
+      setAcknowledged(false)
     }
   }
 
