@@ -2,7 +2,7 @@
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { motion } from 'motion/react'
 import { subscribeToAntennas } from '@/lib/firestore'
@@ -80,23 +80,25 @@ export default function MapPage() {
     return () => unsubscribe()
   }, [user, setCounts])
 
-  const fetchWeather = useCallback(async () => {
-    try {
-      const res = await fetch('/api/weather')
-      if (!res.ok) return
-      const { weatherRisk: risk } = await res.json()
-      setWeatherRisk(risk ?? {})
-    } catch {
-      // silently ignore — weather is non-critical
-    }
-  }, [])
-
   useEffect(() => {
     if (!user) return
-    fetchWeather()
-    const id = setInterval(fetchWeather, 30 * 60 * 1000)
-    return () => clearInterval(id)
-  }, [user, fetchWeather])
+    let cancelled = false
+
+    const fetchWeather = async () => {
+      try {
+        const res = await fetch('/api/weather')
+        if (!res.ok || cancelled) return
+        const { weatherRisk: risk } = await res.json()
+        if (!cancelled) setWeatherRisk(risk ?? {})
+      } catch {
+        // silently ignore — weather is non-critical
+      }
+    }
+
+    void fetchWeather()
+    const id = setInterval(() => void fetchWeather(), 30 * 60 * 1000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [user])
 
   const handleAntennaClick = (antenna: Antenna, anchorEl: Element) => {
     const isDeselecting = selectedId === antenna.id
@@ -143,8 +145,8 @@ export default function MapPage() {
       {/* Map Area */}
       <motion.div
         className="flex-1 relative min-w-0"
-        initial={{ opacity: 0, filter: 'blur(4px)' }}
-        animate={{ opacity: 1, filter: 'blur(0px)' }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         transition={{ duration: 0.45, ease: EASE }}
       >
         <MapClient
@@ -153,6 +155,7 @@ export default function MapPage() {
           activeFilters={activeFilters}
           weatherRisk={weatherRisk}
           onAntennaClick={handleAntennaClick}
+          onSearchSelect={(antenna) => setSelectedId(antenna.id)}
         />
       </motion.div>
 

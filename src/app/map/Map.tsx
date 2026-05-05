@@ -12,6 +12,7 @@ export interface MapProps {
   }
   weatherRisk?: Record<string, boolean>
   onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
+  onSearchSelect?: (antenna: Antenna) => void
 }
 
 const MapWithNoSSR = dynamic(() => import('../../components/MapClient'), {
@@ -29,7 +30,7 @@ const MapWithNoSSR = dynamic(() => import('../../components/MapClient'), {
   ),
 })
 
-export default function Map({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick }: MapProps) {
+export default function Map({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick, onSearchSelect }: MapProps) {
   return (
     <MapWithNoSSR
       antennas={antennas}
@@ -37,6 +38,7 @@ export default function Map({ antennas, selectedId, activeFilters, weatherRisk, 
       activeFilters={activeFilters}
       weatherRisk={weatherRisk}
       onAntennaClick={onAntennaClick}
+      onSearchSelect={onSearchSelect}
     />
   )
 }

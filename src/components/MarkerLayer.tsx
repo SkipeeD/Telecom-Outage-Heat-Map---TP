@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
-import { CircleMarker, Tooltip } from 'react-leaflet'
+import { CircleMarker, Tooltip, useMap } from 'react-leaflet'
+import type React from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
 import { cityForAntenna } from '@/lib/weather-cities'
@@ -61,14 +62,48 @@ interface MarkerLayerProps {
   }
   weatherRisk?: Record<string, boolean>
   onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
+  markerPathsRef?: React.RefObject<Map<string, SVGElement>>
 }
 
-export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick }: MarkerLayerProps) {
+export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick, markerPathsRef }: MarkerLayerProps) {
   const { theme } = useTheme()
+  const map = useMap()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
-  // Map from marker id → raw SVG path element captured on Leaflet's `add` event
-  const markerPaths = useRef(new Map<string, SVGElement>())
+  const internalRef = useRef(new Map<string, SVGElement>())
+  const markerPaths = markerPathsRef ?? internalRef
+
+  // Keep refs so zoom handlers can read current values without stale closures
+  const selectedIdRef = useRef(selectedId)
+  const hoveredIdRef  = useRef(hoveredId)
+  useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
+  useEffect(() => { hoveredIdRef.current  = hoveredId  }, [hoveredId])
+
+  // Pure-DOM zoom handlers — no setState, no re-render, no compounding transforms
+  useEffect(() => {
+    const clearTransforms = () => {
+      markerPaths.current.forEach(path => {
+        path.style.transition = 'none'
+        path.style.transform  = 'scale(1)'
+        path.style.filter     = ''
+      })
+    }
+    const restoreTransforms = () => {
+      markerPaths.current.forEach((path, id) => {
+        path.style.transition = 'transform 220ms cubic-bezier(0.34,1.56,0.64,1), filter 220ms ease'
+        if (id === selectedIdRef.current) {
+          path.style.transform = 'scale(1.72)'
+          path.style.filter    = 'drop-shadow(0 0 5px rgba(124,111,247,0.6))'
+        } else if (id === hoveredIdRef.current) {
+          path.style.transform = 'scale(1.45)'
+          path.style.filter    = ''
+        }
+      })
+    }
+    map.on('zoomstart', clearTransforms)
+    map.on('zoomend',   restoreTransforms)
+    return () => { map.off('zoomstart', clearTransforms); map.off('zoomend', restoreTransforms) }
+  }, [map])
 
   const antennaMarkers = useMemo(() => {
     return antennas.map(antenna => {
@@ -80,18 +115,18 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
     })
   }, [antennas, theme, weatherRisk])
 
-  // Apply CSS scale transforms whenever hover/selection changes
+  // Apply CSS scale transforms on selection/hover change
   useEffect(() => {
     markerPaths.current.forEach((path, id) => {
       if (id === selectedId) {
         path.style.transform = 'scale(1.72)'
-        path.style.filter = 'drop-shadow(0 0 5px rgba(124,111,247,0.6))'
+        path.style.filter    = 'drop-shadow(0 0 5px rgba(124,111,247,0.6))'
       } else if (id === hoveredId) {
         path.style.transform = 'scale(1.45)'
-        path.style.filter = ''
+        path.style.filter    = ''
       } else {
         path.style.transform = 'scale(1)'
-        path.style.filter = ''
+        path.style.filter    = ''
       }
     })
   }, [selectedId, hoveredId])

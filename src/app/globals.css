@@ -238,6 +238,10 @@ html, body {
   background: #1a1a2e !important;
 }
 
+.leaflet-control-attribution {
+  display: none !important;
+}
+
 .leaflet-tile {
   outline: 1px solid transparent;
 }
