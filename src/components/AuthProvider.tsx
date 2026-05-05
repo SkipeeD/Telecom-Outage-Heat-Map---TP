@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { onAuthStateChanged, User } from 'firebase/auth'
+import { getIdTokenResult, onAuthStateChanged, User } from 'firebase/auth'
 import { auth, db } from '@/lib/firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { usePathname, useRouter } from 'next/navigation'
@@ -23,6 +23,22 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext)
 
+function parseRoleClaim(role: unknown): UserProfile['role'] | undefined {
+  return role === 'admin' || role === 'engineer' || role === 'user'
+    ? role
+    : undefined
+}
+
+function getFallbackProfile(firebaseUser: User, role: UserProfile['role'] = 'user'): UserProfile {
+  return {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email ?? '',
+    displayName: firebaseUser.displayName ?? undefined,
+    role,
+    createdAt: new Date().toISOString(),
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -36,25 +52,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser)
 
       if (firebaseUser) {
+        let roleFromClaim: UserProfile['role'] | undefined
+
         try {
+          const tokenResult = await getIdTokenResult(firebaseUser, true)
+          roleFromClaim = parseRoleClaim(tokenResult.claims.role)
+
           const profileRef = doc(db, 'users', firebaseUser.uid)
           const profileSnap = await getDoc(profileRef)
           
           if (profileSnap.exists()) {
-            setProfile(profileSnap.data() as UserProfile)
+            const firestoreProfile = profileSnap.data() as UserProfile
+            setProfile({
+              ...firestoreProfile,
+              role: roleFromClaim ?? firestoreProfile.role,
+            })
           } else {
             // New user or missing profile
-            const newProfile: UserProfile = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email!,
-              role: 'user',
-              createdAt: new Date().toISOString()
-            }
+            const newProfile = getFallbackProfile(firebaseUser)
             await setDoc(profileRef, newProfile)
-            setProfile(newProfile)
+            setProfile({
+              ...newProfile,
+              role: roleFromClaim ?? newProfile.role,
+            })
           }
         } catch (error) {
           console.error("Error fetching/creating profile:", error)
+          setProfile(getFallbackProfile(firebaseUser, roleFromClaim))
         }
       } else {
         setProfile(null)

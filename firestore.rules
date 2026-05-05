@@ -4,12 +4,12 @@ service cloud.firestore {
 
     function isAdmin() {
       return request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+        request.auth.token.role == 'admin';
     }
 
     function isEngineerOrAdmin() {
       return request.auth != null &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['engineer', 'admin'];
+        request.auth.token.role in ['engineer', 'admin'];
     }
 
     match /topology/{document=**} {
@@ -32,7 +32,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if request.auth != null &&
         (request.auth.uid == userId || isAdmin());
-      allow create: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null &&
+        request.auth.uid == userId &&
+        request.resource.data.role == 'user';
       allow update: if isAdmin() &&
         request.resource.data.role in ['user', 'engineer'];
       allow delete: if false;

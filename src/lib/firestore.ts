@@ -14,6 +14,10 @@ import { db } from './firebase'
 import { auth } from './firebase'
 import type { Antenna, Alarm, AlarmSeverity, Incident, IncidentAssignee, Technology, UserProfile } from '@/types'
 
+const CELL_HISTORY_LIMIT = 50
+const INCIDENT_LIST_LIMIT = 100
+const RESOLVED_ALARM_LIMIT = 100
+
 export async function getAntennas(): Promise<Antenna[]> {
   const snapshot = await getDocs(collection(db, 'topology'))
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Antenna))
@@ -31,7 +35,9 @@ export async function getAlarmsForAntenna(antennaId: string): Promise<Alarm[]> {
 export async function getResolvedAlarms(): Promise<Alarm[]> {
   const q = query(
     collection(db, 'alarms'),
-    where('resolved', '==', true)
+    where('resolved', '==', true),
+    orderBy('cancelTime', 'desc'),
+    limit(RESOLVED_ALARM_LIMIT)
   )
   const snapshot = await getDocs(q)
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Alarm))
@@ -42,7 +48,9 @@ export function subscribeToResolvedAlarms(
 ): () => void {
   const q = query(
     collection(db, 'alarms'),
-    where('resolved', '==', true)
+    where('resolved', '==', true),
+    orderBy('cancelTime', 'desc'),
+    limit(RESOLVED_ALARM_LIMIT)
   )
   return onSnapshot(q, (snapshot) => {
     const alarms = snapshot.docs.map(
@@ -56,7 +64,8 @@ export async function getAlarmsForAntennaCell(antennaId: string, tech: Technolog
   const q = query(
     collection(db, 'alarms'),
     where('antennaId', '==', antennaId),
-    where('technology', '==', tech)
+    where('technology', '==', tech),
+    limit(CELL_HISTORY_LIMIT)
   )
   const snapshot = await getDocs(q)
   const alarms = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Alarm))
@@ -67,7 +76,8 @@ export async function getIncidentsForCell(antennaId: string, tech: Technology): 
   const q = query(
     collection(db, 'incidents'),
     where('antennaId', '==', antennaId),
-    where('technology', '==', tech)
+    where('technology', '==', tech),
+    limit(CELL_HISTORY_LIMIT)
   )
   const snapshot = await getDocs(q)
   const incidents = snapshot.docs.map((doc) => ({ ...doc.data() } as Incident))
@@ -131,14 +141,13 @@ export async function updateUserRole(uid: string, role: 'user' | 'engineer'): Pr
   })
 
   if (!res.ok) throw new Error('Failed to set custom claim')
-
-  await updateDoc(doc(db, 'users', uid), { role })
 }
 
 export async function getAllIncidents(): Promise<Incident[]> {
   const q = query(
     collection(db, 'incidents'),
-    orderBy('submitDate', 'desc')
+    orderBy('submitDate', 'desc'),
+    limit(INCIDENT_LIST_LIMIT)
   )
   const snapshot = await getDocs(q)
   return snapshot.docs.map(d => d.data() as Incident)
@@ -218,7 +227,12 @@ export function subscribeToAntennas(
 export function subscribeToIncidents(
   callback: (incidents: Incident[]) => void
 ): () => void {
-  return onSnapshot(collection(db, 'incidents'), (snapshot) => {
+  const q = query(
+    collection(db, 'incidents'),
+    orderBy('submitDate', 'desc'),
+    limit(INCIDENT_LIST_LIMIT)
+  )
+  return onSnapshot(q, (snapshot) => {
     const incidents = snapshot.docs.map(
       (doc) => ({ ...doc.data() } as Incident)
     )
