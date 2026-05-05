@@ -199,9 +199,12 @@ export function IncidentsPanel() {
               ) : (
                 <div>
                   {filtered.map((inc, idx) => {
-                    const statusColor   = INC_STATUS_COLOR[inc.status] ?? 'var(--text-muted)'
-                    const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
                     const assignees     = inc.assignees ?? []
+                    const displayStatus = (inc.status === 'ASSIGNED' && assignees.length === 0) ? 'UNASSIGNED' : inc.status
+                    const statusColor   = displayStatus === 'UNASSIGNED'
+                      ? 'var(--text-muted)'
+                      : (INC_STATUS_COLOR[inc.status] ?? 'var(--text-muted)')
+                    const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
 
                     return (
                       <motion.div
@@ -234,7 +237,7 @@ export function IncidentsPanel() {
                                 border:      `1px solid color-mix(in srgb, ${statusColor} 28%, transparent)`,
                               }}
                             >
-                              {inc.status}
+                              {displayStatus}
                             </span>
                             <span
                               className="font-mono text-[9px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-full)]"

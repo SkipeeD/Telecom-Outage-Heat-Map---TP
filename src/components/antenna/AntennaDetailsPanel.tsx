@@ -756,9 +756,12 @@ function IncidentsTab({
         {!loading && filteredIncidents.length > 0 && (
           <div className="flex flex-col gap-2.5">
             {filteredIncidents.map(inc => {
-              const statusColor   = INC_STATUS_COLOR[inc.status] ?? 'var(--text-muted)'
-              const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
               const assignees     = inc.assignees ?? []
+              const displayStatus = (inc.status === 'ASSIGNED' && assignees.length === 0) ? 'UNASSIGNED' : inc.status
+              const statusColor   = displayStatus === 'UNASSIGNED'
+                ? 'var(--text-muted)'
+                : (INC_STATUS_COLOR[inc.status] ?? 'var(--text-muted)')
+              const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
               const iAmAssigned   = assignees.some(a => a.uid === profile?.uid)
 
               return (
@@ -795,7 +798,7 @@ function IncidentsTab({
                           border:      `1px solid color-mix(in srgb, ${statusColor} 28%, transparent)`,
                         }}
                       >
-                        {inc.status}
+                        {displayStatus}
                       </span>
                     </div>
 
