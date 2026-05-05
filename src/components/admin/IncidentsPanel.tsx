@@ -11,6 +11,7 @@ import { AssignEngineersModal } from './AssignEngineersModal'
 const INC_STATUS_COLOR: Record<string, string> = {
   'IN PROGRESS': 'var(--accent)',
   'ASSIGNED':    'var(--alarm-warning)',
+  'UNASSIGNED':  'var(--text-muted)',
   'RESOLVED':    'var(--alarm-ok)',
   'CLOSED':      'var(--text-muted)',
 }
@@ -34,8 +35,9 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.3, ease: EASE } },
 }
 
-type StatusFilter = 'ALL' | 'ASSIGNED' | 'IN PROGRESS' | 'RESOLVED' | 'CLOSED'
-const STATUS_FILTERS: StatusFilter[] = ['ALL', 'ASSIGNED', 'IN PROGRESS', 'RESOLVED', 'CLOSED']
+type DisplayStatus = 'UNASSIGNED' | Incident['status']
+type StatusFilter = 'ALL' | DisplayStatus
+const STATUS_FILTERS: StatusFilter[] = ['ALL', 'UNASSIGNED', 'ASSIGNED', 'IN PROGRESS', 'RESOLVED', 'CLOSED']
 
 function relTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -45,6 +47,13 @@ function relTime(iso: string): string {
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}h ago`
   return `${Math.floor(h / 24)}d ago`
+}
+
+function getDisplayStatus(incident: Incident): DisplayStatus {
+  const assignees = incident.assignees ?? []
+  return incident.status === 'ASSIGNED' && assignees.length === 0
+    ? 'UNASSIGNED'
+    : incident.status
 }
 
 export function IncidentsPanel() {
@@ -79,7 +88,7 @@ export function IncidentsPanel() {
   }
 
   const filtered = incidents.filter(i =>
-    statusFilter === 'ALL' ? true : i.status === statusFilter
+    statusFilter === 'ALL' ? true : getDisplayStatus(i) === statusFilter
   )
 
   const stats = {
@@ -200,10 +209,8 @@ export function IncidentsPanel() {
                 <div>
                   {filtered.map((inc, idx) => {
                     const assignees     = inc.assignees ?? []
-                    const displayStatus = (inc.status === 'ASSIGNED' && assignees.length === 0) ? 'UNASSIGNED' : inc.status
-                    const statusColor   = displayStatus === 'UNASSIGNED'
-                      ? 'var(--text-muted)'
-                      : (INC_STATUS_COLOR[inc.status] ?? 'var(--text-muted)')
+                    const displayStatus = getDisplayStatus(inc)
+                    const statusColor   = INC_STATUS_COLOR[displayStatus] ?? 'var(--text-muted)'
                     const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
 
                     return (

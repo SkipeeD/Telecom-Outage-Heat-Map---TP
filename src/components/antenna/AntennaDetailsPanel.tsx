@@ -13,7 +13,7 @@ import {
 } from '@/lib/antenna-helpers'
 import { SeverityBadge } from './SeverityBadge'
 import { Button } from '@/components/ui/button'
-import { createIncidentForAlarm, getAlarmsForAntennaCell, getIncidentsForCell, updateIncidentAssignees, updateIncidentStatus } from '@/lib/firestore'
+import { acknowledgeAssignedIncidents, createIncidentForAlarm, getAlarmsForAntennaCell, getIncidentsForCell, updateIncidentAssignees } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { canAssignEngineers, canCreateIncident } from '@/lib/roles'
 import { AssignEngineersModal } from '@/components/admin/AssignEngineersModal'
@@ -117,20 +117,28 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
 
   const cell = antenna.cells.find(c => c.technology === activeTech) ?? null
 
-  // Admins always see Acknowledge. Engineers only if assigned to an incident on this cell.
-  const isAssignedEngineer = profile?.role === 'engineer' &&
-    incidents.some(i => (i.assignees ?? []).some(a => a.uid === profile.uid))
-  const canAck = profile?.role === 'admin' || isAssignedEngineer
+  // Admins can acknowledge any assigned incident. Engineers only get their own.
+  const acknowledgeableIncidents = incidents.filter(i =>
+    i.status === 'ASSIGNED' &&
+    (profile?.role === 'admin' || (i.assignees ?? []).some(a => a.uid === profile?.uid))
+  )
+  const canAck = acknowledged || acknowledgeableIncidents.length > 0
 
   async function handleAcknowledge() {
-    setAcknowledged(true)
-    // Promote every ASSIGNED incident on this cell to IN PROGRESS
-    const assigned = incidents.filter(i => i.status === 'ASSIGNED')
-    await Promise.all(assigned.map(i => updateIncidentStatus(i.incidentNumber, 'IN PROGRESS')))
-    if (assigned.length > 0) {
-      setIncidents(prev =>
-        prev.map(i => i.status === 'ASSIGNED' ? { ...i, status: 'IN PROGRESS' } : i)
+    if (acknowledged || acknowledgeableIncidents.length === 0) return
+    try {
+      const updated = await acknowledgeAssignedIncidents(
+        acknowledgeableIncidents.map(i => i.incidentNumber),
       )
+      if (updated.length > 0) {
+        const updatedSet = new Set(updated)
+        setIncidents(prev =>
+          prev.map(i => updatedSet.has(i.incidentNumber) ? { ...i, status: 'IN PROGRESS' } : i)
+        )
+        setAcknowledged(true)
+      }
+    } catch {
+      setAcknowledged(false)
     }
   }
 

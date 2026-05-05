@@ -1,13 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
-import { getEngineers, subscribeToIncidents } from '@/lib/firestore'
+import { subscribeToIncidents } from '@/lib/firestore'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { RefreshCw, Users, Wrench } from 'lucide-react'
-import type { Incident, UserProfile } from '@/types'
+import { Users, Wrench } from 'lucide-react'
+import type { Incident } from '@/types'
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 
@@ -53,14 +53,9 @@ export default function EngineerPage() {
   const router = useRouter()
 
   const [incidents, setIncidents] = useState<Incident[]>([])
-  const [team, setTeam]           = useState<UserProfile[]>([])
   const [loading, setLoading]     = useState(true)
-  const [teamLoading, setTeamLoading] = useState(true)
-  const [error, setError]         = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<AssignFilter>('ALL')
-  const [refreshTeamKey, setRefreshTeamKey] = useState(0)
-
-  const refresh = useCallback(() => setRefreshTeamKey(k => k + 1), [])
+  const [selectedIncidentNumber, setSelectedIncidentNumber] = useState<string | null>(null)
 
   useEffect(() => {
     if (authLoading) return
@@ -79,16 +74,6 @@ export default function EngineerPage() {
     return () => unsub()
   }, [authLoading, profile])
 
-  // Team: one-shot fetch with manual refresh
-  useEffect(() => {
-    if (authLoading || !profile || profile.role !== 'engineer') return
-    let cancelled = false
-    getEngineers()
-      .then(engineers => { if (!cancelled) { setError(null); setTeam(engineers); setTeamLoading(false) } })
-      .catch(() => { if (!cancelled) { setError('Failed to load team.'); setTeamLoading(false) } })
-    return () => { cancelled = true }
-  }, [authLoading, profile, refreshTeamKey])
-
   if (authLoading || profile?.role !== 'engineer') return null
 
   const filtered = incidents.filter(i =>
@@ -102,8 +87,13 @@ export default function EngineerPage() {
     resolved:   incidents.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length,
   }
 
-  const teamWithoutMe = team.filter(u => u.uid !== profile?.uid)
-  const isLoading = loading || teamLoading
+  const selectedIncident =
+    incidents.find(i => i.incidentNumber === selectedIncidentNumber) ??
+    incidents[0] ??
+    null
+  const activeIncidentNumber = selectedIncident?.incidentNumber ?? null
+  const selectedTeam = selectedIncident?.assignees ?? []
+  const isLoading = loading
 
   return (
     <div className="min-h-full bg-[var(--bg-base)] p-6 md:p-8">
@@ -119,7 +109,7 @@ export default function EngineerPage() {
             My Workspace
           </h1>
           <p className="text-[14px] text-[var(--text-secondary)]">
-            Incidents assigned to you and your NOC team.
+            Incidents assigned to you. Select one to inspect its assigned NOC team.
           </p>
         </motion.div>
 
@@ -167,22 +157,6 @@ export default function EngineerPage() {
                         {filtered.length} shown
                       </span>
                     )}
-                    <motion.button
-                      whileTap={{ scale: 0.96 }}
-                      onClick={refresh}
-                      disabled={isLoading}
-                      className="
-                        flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius-md)]
-                        text-[10px] font-medium uppercase tracking-widest
-                        border border-[var(--glass-border)] bg-[var(--glass-bg)]
-                        text-[var(--text-secondary)] hover:text-[var(--text-primary)]
-                        hover:bg-[var(--glass-hover)] hover:border-[var(--border-strong)]
-                        transition-colors duration-200 disabled:opacity-40 cursor-pointer
-                      "
-                    >
-                      <RefreshCw className={`size-3 ${isLoading ? 'animate-spin' : ''}`} />
-                      Refresh
-                    </motion.button>
                   </div>
                 </div>
 
@@ -213,12 +187,6 @@ export default function EngineerPage() {
               </CardHeader>
 
               <CardContent className="p-0">
-                {error && (
-                  <div className="px-6 py-3 text-[13px] text-[var(--alarm-critical)] bg-[rgba(240,79,79,0.06)] border-b border-[var(--glass-border)]">
-                    {error}
-                  </div>
-                )}
-
                 {isLoading ? (
                   <div className="flex items-center gap-2.5 px-6 py-10 text-[13px] text-[var(--text-muted)] animate-pulse">
                     <span className="w-2 h-2 rounded-full bg-[var(--text-muted)] animate-pulse" />
@@ -238,16 +206,35 @@ export default function EngineerPage() {
                     {filtered.map((inc, idx) => {
                       const statusColor   = INC_STATUS_COLOR[inc.status] ?? 'var(--text-muted)'
                       const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
+                      const isSelected    = activeIncidentNumber === inc.incidentNumber
 
                       return (
                         <motion.div
                           key={inc.incidentNumber}
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={isSelected}
+                          onClick={() => setSelectedIncidentNumber(inc.incidentNumber)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setSelectedIncidentNumber(inc.incidentNumber)
+                            }
+                          }}
                           initial={{ opacity: 0, y: 6 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -4 }}
                           transition={{ delay: idx * 0.015, duration: 0.25, ease: EASE }}
-                          className="flex flex-col gap-2 px-5 py-4 border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors duration-150"
-                          style={{ borderLeft: `2px solid ${statusColor}` }}
+                          className="
+                            flex flex-col gap-2 px-5 py-4 border-b border-[var(--glass-border)] last:border-0
+                            hover:bg-[var(--glass-hover)] transition-colors duration-150 cursor-pointer outline-none
+                            focus-visible:ring-2 focus-visible:ring-[var(--border-accent)]
+                          "
+                          style={{
+                            borderLeft: `2px solid ${statusColor}`,
+                            background: isSelected ? 'var(--glass-hover)' : undefined,
+                            boxShadow: isSelected ? 'inset 0 0 0 1px var(--border-accent)' : undefined,
+                          }}
                         >
                           {/* Top row */}
                           <div className="flex items-center gap-2 flex-wrap">
@@ -313,40 +300,47 @@ export default function EngineerPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                {teamLoading ? (
+                {isLoading ? (
                   <div className="px-4 py-6 text-[12px] text-[var(--text-muted)] animate-pulse font-mono">
                     Loading team…
                   </div>
+                ) : !selectedIncident ? (
+                  <div className="px-4 py-8 text-center">
+                    <div className="text-[12px] text-[var(--text-secondary)]">
+                      Select an incident to view its team.
+                    </div>
+                    <div className="mt-1 text-[11px] font-mono text-[var(--text-muted)]">
+                      The team is scoped per incident.
+                    </div>
+                  </div>
                 ) : (
                   <div>
-                    {/* You */}
-                    <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--glass-border)]">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center font-mono text-[11px] font-bold shrink-0"
-                        style={{
-                          background: 'color-mix(in srgb, var(--accent) 15%, var(--bg-subtle))',
-                          color:      'var(--accent-bright)',
-                          border:     '1px solid var(--border-accent)',
-                        }}
-                      >
-                        {(profile?.displayName ?? profile?.email ?? 'U').slice(0, 2).toUpperCase()}
+                    <div className="px-4 py-3 border-b border-[var(--glass-border)] bg-black/10">
+                      <div className="font-mono text-[12px] font-bold text-[var(--text-primary)]">
+                        {selectedIncident.incidentNumber}
                       </div>
-                      <div className="flex flex-col gap-0.5 min-w-0">
-                        <span className="text-[13px] font-medium text-[var(--text-primary)] truncate">
-                          {profile?.displayName ?? profile?.email?.split('@')[0]}
-                        </span>
-                        <span className="text-[10px] font-mono text-[var(--accent)] uppercase tracking-widest">You</span>
+                      <div className="mt-1 flex items-center gap-2 text-[10px] font-mono text-[var(--text-muted)]">
+                        <span>{selectedIncident.siteId}</span>
+                        <span>·</span>
+                        <span>{selectedIncident.technology}</span>
                       </div>
                     </div>
 
-                    {/* Teammates */}
-                    <AnimatePresence initial={false}>
-                      {teamWithoutMe.length === 0 ? (
-                        <div className="px-4 py-6 text-[12px] text-[var(--text-muted)] text-center font-mono">
-                          No other engineers yet.
-                        </div>
+                    <AnimatePresence initial={false} mode="popLayout">
+                      {selectedTeam.length === 0 ? (
+                        <motion.div
+                          key="empty-team"
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.2, ease: EASE }}
+                          className="px-4 py-6 text-[12px] text-[var(--text-muted)] text-center font-mono"
+                        >
+                          No engineers assigned.
+                        </motion.div>
                       ) : (
-                        teamWithoutMe.map((eng, i) => {
+                        selectedTeam.map((eng, i) => {
+                          const isMe     = eng.uid === profile?.uid
                           const label    = eng.displayName ?? eng.email.split('@')[0]
                           const initials = label.slice(0, 2).toUpperCase()
                           return (
@@ -354,15 +348,18 @@ export default function EngineerPage() {
                               key={eng.uid}
                               initial={{ opacity: 0, x: 8 }}
                               animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -8 }}
                               transition={{ delay: i * 0.04, duration: 0.25, ease: EASE }}
-                              className="flex items-center gap-3 px-4 py-3 border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors duration-150"
+                              className="flex items-center gap-3 px-4 py-3 border-b border-[var(--glass-border)] last:border-0"
                             >
                               <div
                                 className="w-8 h-8 rounded-full flex items-center justify-center font-mono text-[11px] font-bold shrink-0"
                                 style={{
-                                  background: 'color-mix(in srgb, var(--alarm-ok) 12%, var(--bg-subtle))',
-                                  color:      'var(--alarm-ok)',
-                                  border:     '1px solid rgba(52,211,153,0.25)',
+                                  background: isMe
+                                    ? 'color-mix(in srgb, var(--accent) 15%, var(--bg-subtle))'
+                                    : 'color-mix(in srgb, var(--alarm-ok) 12%, var(--bg-subtle))',
+                                  color:  isMe ? 'var(--accent-bright)' : 'var(--alarm-ok)',
+                                  border: `1px solid ${isMe ? 'var(--border-accent)' : 'rgba(52,211,153,0.25)'}`,
                                 }}
                               >
                                 {initials}
@@ -371,6 +368,11 @@ export default function EngineerPage() {
                                 <span className="text-[13px] text-[var(--text-primary)] truncate">{label}</span>
                                 <span className="text-[11px] font-mono text-[var(--text-muted)] truncate">{eng.email}</span>
                               </div>
+                              {isMe && (
+                                <span className="ml-auto text-[10px] font-mono text-[var(--accent)] uppercase tracking-widest">
+                                  You
+                                </span>
+                              )}
                             </motion.div>
                           )
                         })

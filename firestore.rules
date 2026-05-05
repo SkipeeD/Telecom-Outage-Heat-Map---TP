@@ -24,7 +24,9 @@ service cloud.firestore {
 
     match /incidents/{document=**} {
       allow read: if request.auth != null;
-      allow write: if isEngineerOrAdmin();
+      allow create: if isEngineerOrAdmin();
+      allow update: if isAdmin();
+      allow delete: if false;
     }
 
     match /users/{userId} {
