@@ -2,7 +2,7 @@
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { motion } from 'motion/react'
 import { subscribeToAntennas } from '@/lib/firestore'
@@ -47,6 +47,7 @@ export default function MapPage() {
   const [popupAnchor, setPopupAnchor] = useState<Element | null>(null)
   const [detailsAntenna, setDetailsAntenna] = useState<Antenna | null>(null)
   const [detailsTech, setDetailsTech] = useState<Technology | null>(null)
+  const [weatherRisk, setWeatherRisk] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (!user) return
@@ -78,6 +79,24 @@ export default function MapPage() {
     })
     return () => unsubscribe()
   }, [user, setCounts])
+
+  const fetchWeather = useCallback(async () => {
+    try {
+      const res = await fetch('/api/weather')
+      if (!res.ok) return
+      const { weatherRisk: risk } = await res.json()
+      setWeatherRisk(risk ?? {})
+    } catch {
+      // silently ignore — weather is non-critical
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    fetchWeather()
+    const id = setInterval(fetchWeather, 30 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [user, fetchWeather])
 
   const handleAntennaClick = (antenna: Antenna, anchorEl: Element) => {
     const isDeselecting = selectedId === antenna.id
@@ -132,9 +151,9 @@ export default function MapPage() {
           antennas={antennas}
           selectedId={selectedId}
           activeFilters={activeFilters}
+          weatherRisk={weatherRisk}
           onAntennaClick={handleAntennaClick}
         />
-
       </motion.div>
 
       {popupAntenna && (

@@ -246,3 +246,8 @@ html, body {
   /* Some browsers need this to prevent tiny gaps */
   box-shadow: 0 0 1px transparent;
 }
+
+@keyframes weather-pulse {
+  0%, 100% { opacity: 0.65; transform: scale(1); }
+  50%       { opacity: 0.15; transform: scale(1.7); }
+}

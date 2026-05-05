@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion } from 'motion/react'
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
 import { subscribeToAntennas, subscribeToResolvedAlarms, subscribeToLongLivedAlarms } from '@/lib/firestore'
@@ -12,11 +12,12 @@ import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, AlarmSeverity, Technology, Alarm } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
-import { 
+import {
   Activity, ShieldAlert, CheckCircle2, Zap, Globe, Download, Clock, History,
   ArrowRight, Cloud, CloudRain, Sun, Wind, Thermometer, LucideIcon, MapPin
 } from 'lucide-react'
 import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
+import { cityForAntenna } from '@/lib/weather-cities'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,58 +26,9 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import type { CityWeatherDetail } from '@/app/api/weather/route'
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
-
-const weatherData = [
-  { region: 'Muntenia', city: 'Bucharest', temp: 24, condition: 'sunny', risk: 'low', description: 'Clear skies. Optimal operating conditions.' },
-  { region: 'Transylvania', city: 'Cluj-Napoca', temp: 18, condition: 'cloudy', risk: 'low', description: 'Overcast. No immediate impact on infrastructure.' },
-  { region: 'Banat', city: 'Timișoara', temp: 21, condition: 'rainy', risk: 'medium', description: 'Moderate rain. Potential for signal attenuation.' },
-  { region: 'Moldova', city: 'Iași', temp: 14, condition: 'stormy', risk: 'high', description: 'Severe thunderstorms. High risk of power fluctuations.' },
-  { region: 'Dobrogea', city: 'Constanța', temp: 22, condition: 'windy', risk: 'medium', description: 'High winds. Monitoring structural stability.' },
-  { region: 'Oltenia', city: 'Craiova', temp: 25, condition: 'sunny', risk: 'low', description: 'Warm and clear. Ideal thermal performance.' },
-  { region: 'Transylvania', city: 'Brașov', temp: 12, condition: 'cloudy', risk: 'low', description: 'Mountain fog. Routine signal monitoring active.' },
-  { region: 'Moldova', city: 'Galați', temp: 19, condition: 'windy', risk: 'medium', description: 'River winds. Checking microwave link stability.' },
-  { region: 'Muntenia', city: 'Ploiești', temp: 23, condition: 'sunny', risk: 'low', description: 'Clear industrial zone. Nominal operations.' },
-  { region: 'Crișana', city: 'Oradea', temp: 20, condition: 'rainy', risk: 'medium', description: 'Front passing. Possible moisture in external units.' },
-  { region: 'Transylvania', city: 'Alba Iulia', temp: 17, condition: 'cloudy', risk: 'low', description: 'Stable overcast. No network impact.' },
-  { region: 'Crișana', city: 'Arad', temp: 22, condition: 'sunny', risk: 'low', description: 'Dry conditions. Optimal backhaul performance.' },
-  { region: 'Muntenia', city: 'Pitești', temp: 21, condition: 'cloudy', risk: 'low', description: 'Cloud cover. Monitoring solar-powered nodes.' },
-  { region: 'Moldova', city: 'Bacău', temp: 16, condition: 'rainy', risk: 'medium', description: 'Light showers. Routine environmental checks.' },
-  { region: 'Transylvania', city: 'Bistrița', temp: 13, condition: 'stormy', risk: 'high', description: 'Lightning detected. Surge protection verified.' },
-  { region: 'Moldova', city: 'Botoșani', temp: 15, condition: 'cloudy', risk: 'low', description: 'Stable conditions in the north-east.' },
-  { region: 'Muntenia', city: 'Brăila', temp: 23, condition: 'windy', risk: 'medium', description: 'High humidity and river breeze.' },
-  { region: 'Muntenia', city: 'Buzău', temp: 21, condition: 'sunny', risk: 'low', description: 'Optimal operating temperatures.' },
-  { region: 'Muntenia', city: 'Călărași', temp: 24, condition: 'sunny', risk: 'low', description: 'Dry and hot conditions.' },
-  { region: 'Transylvania', city: 'Sfântu Gheorghe', temp: 11, condition: 'cloudy', risk: 'low', description: 'Mountainous terrain humidity.' },
-  { region: 'Muntenia', city: 'Târgoviște', temp: 20, condition: 'sunny', risk: 'low', description: 'Nominal operational state.' },
-  { region: 'Muntenia', city: 'Giurgiu', temp: 25, condition: 'sunny', risk: 'low', description: 'Border zone signal stability confirmed.' },
-  { region: 'Oltenia', city: 'Târgu Jiu', temp: 19, condition: 'rainy', risk: 'medium', description: 'Moderate rain in the sub-carpathian zone.' },
-  { region: 'Transylvania', city: 'Miercurea Ciuc', temp: 8, condition: 'cloudy', risk: 'low', description: 'Cold front. Monitoring battery levels.' },
-  { region: 'Transylvania', city: 'Deva', temp: 18, condition: 'sunny', risk: 'low', description: 'Stable atmosphere.' },
-  { region: 'Muntenia', city: 'Slobozia', temp: 22, condition: 'sunny', risk: 'low', description: 'Optimal microwave link visibility.' },
-  { region: 'Maramureș', city: 'Baia Mare', temp: 14, condition: 'rainy', risk: 'medium', description: 'Persistent rain. Checking cabinet seals.' },
-  { region: 'Oltenia', city: 'Drobeta-Turnu Severin', temp: 24, condition: 'sunny', risk: 'low', description: 'Optimal power from solar arrays.' },
-  { region: 'Transylvania', city: 'Târgu Mureș', temp: 17, condition: 'cloudy', risk: 'low', description: 'Cloud cover. No signal degradation.' },
-  { region: 'Moldova', city: 'Piatra Neamț', temp: 13, condition: 'stormy', risk: 'high', description: 'High wind gusts and electrical activity.' },
-  { region: 'Oltenia', city: 'Slatina', temp: 23, condition: 'sunny', risk: 'low', description: 'Stable operations.' },
-  { region: 'Crișana', city: 'Zalău', temp: 16, condition: 'rainy', risk: 'medium', description: 'Wet soil conditions. Monitoring foundation sensors.' },
-  { region: 'Crișana', city: 'Satu Mare', temp: 18, condition: 'sunny', risk: 'low', description: 'Clear skies near the border.' },
-  { region: 'Transylvania', city: 'Sibiu', temp: 14, condition: 'cloudy', risk: 'low', description: 'Hazy conditions. Nominal range.' },
-  { region: 'Bucovina', city: 'Suceava', temp: 12, condition: 'stormy', risk: 'high', description: 'Severe weather alert active.' },
-  { region: 'Muntenia', city: 'Alexandria', temp: 24, condition: 'sunny', risk: 'low', description: 'Nominal heat dissipation.' },
-  { region: 'Dobrogea', city: 'Tulcea', temp: 21, condition: 'windy', risk: 'medium', description: 'Danube Delta humidity and wind.' },
-  { region: 'Oltenia', city: 'Râmnicu Vâlcea', temp: 19, condition: 'sunny', risk: 'low', description: 'Clear valley visibility.' },
-  { region: 'Moldova', city: 'Vaslui', temp: 16, condition: 'rainy', risk: 'medium', description: 'System monitoring signal attenuation.' },
-  { region: 'Moldova', city: 'Focșani', temp: 20, condition: 'sunny', risk: 'low', description: 'Optimal seismic and weather conditions.' },
-  { region: 'Bucovina', city: 'Vatra Dornei', temp: 9, condition: 'cloudy', risk: 'low', description: 'High altitude cold cover.' },
-  { region: 'Transylvania', city: 'Brad', temp: 17, condition: 'sunny', risk: 'low', description: 'Stable rural coverage.' },
-  { region: 'Crișana', city: 'Beiuș', temp: 19, condition: 'sunny', risk: 'low', description: 'Optimal backhaul path.' },
-  { region: 'Banat', city: 'Reșița', temp: 20, condition: 'rainy', risk: 'medium', description: 'Mountain rain. Monitoring cooling systems.' },
-  { region: 'Maramureș', city: 'Vișeu de Sus', temp: 11, condition: 'cloudy', risk: 'low', description: 'Mountain fog detected.' },
-  { region: 'Transylvania', city: 'Gheorgheni', temp: 10, condition: 'stormy', risk: 'high', description: 'Extreme cold and electrical storms.' },
-  { region: 'Moldova', city: 'Bârlad', temp: 18, condition: 'sunny', risk: 'low', description: 'Stable performance.' },
-]
 
 const weatherIcons: Record<string, LucideIcon> = {
   sunny: Sun,
@@ -87,18 +39,12 @@ const weatherIcons: Record<string, LucideIcon> = {
 }
 
 const riskColors: Record<string, string> = {
-  low: 'var(--alarm-ok)',
+  low:    'var(--alarm-ok)',
   medium: 'var(--alarm-warning)',
-  high: 'var(--alarm-critical)',
+  high:   'var(--alarm-critical)',
 }
 
-const riskRank: Record<string, number> = {
-  high: 3,
-  medium: 2,
-  low: 1,
-}
-
-const sortedWeatherData = [...weatherData].sort((a, b) => riskRank[b.risk] - riskRank[a.risk])
+const riskRank: Record<string, number> = { high: 3, medium: 2, low: 1 }
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -144,7 +90,8 @@ export default function DashboardPage() {
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
   
-  const [selectedCity, setSelectedCity] = useState<typeof sortedWeatherData[0] | null>(null)
+  const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
+  const [selectedCity, setSelectedCity] = useState<CityWeatherDetail | null>(null)
   const [isAutoScrolling, setIsAutoScrolling] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -179,6 +126,27 @@ export default function DashboardPage() {
       unsubLongLived()
     }
   }, [user])
+
+  const fetchWeather = useCallback(async () => {
+    try {
+      const res = await fetch('/api/weather')
+      if (!res.ok) return
+      const { weatherDetails: details } = await res.json()
+      if (Array.isArray(details)) {
+        const sorted = [...details].sort((a, b) => riskRank[b.risk] - riskRank[a.risk])
+        setWeatherDetails(sorted)
+      }
+    } catch {
+      // non-critical — weather data stays empty on failure
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    fetchWeather()
+    const id = setInterval(fetchWeather, 30 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [user, fetchWeather])
 
   const stats = useMemo(() => {
     const total = antennas.length
@@ -560,7 +528,11 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-muted)] border border-[var(--glass-border)]">
                 <Thermometer className="size-3 text-[var(--text-muted)]" />
-                <span className="text-[10px] font-mono text-[var(--text-secondary)]">AVG 20°C</span>
+                <span className="text-[10px] font-mono text-[var(--text-secondary)]">
+                  {weatherDetails.length > 0
+                    ? `AVG ${Math.round(weatherDetails.reduce((s, w) => s + w.temp, 0) / weatherDetails.length)}°C`
+                    : 'Loading…'}
+                </span>
               </div>
             </CardHeader>
             <CardContent>
@@ -571,11 +543,15 @@ export default function DashboardPage() {
                 onMouseLeave={() => setIsAutoScrolling(true)}
                 onTouchStart={() => setIsAutoScrolling(false)}
               >
-                {[...sortedWeatherData, ...sortedWeatherData].map((w, idx) => {
-                  const Icon = weatherIcons[w.condition]
+                {weatherDetails.length === 0 ? (
+                  <div className="flex items-center gap-2 py-6 px-2 text-[11px] font-mono text-[var(--text-muted)] animate-pulse uppercase tracking-widest">
+                    Loading weather data…
+                  </div>
+                ) : [...weatherDetails, ...weatherDetails].map((w, idx) => {
+                  const Icon = weatherIcons[w.condition] ?? Cloud
                   return (
-                    <div 
-                      key={`${w.city}-${idx}`} 
+                    <div
+                      key={`${w.city}-${idx}`}
                       onClick={() => setSelectedCity(w)}
                       className="min-w-[240px] p-3 rounded-[var(--radius-md)] bg-[var(--glass-hover)] border border-[var(--glass-border)] flex flex-col gap-3 group hover:border-[var(--accent)] transition-all cursor-pointer"
                     >
@@ -648,10 +624,7 @@ export default function DashboardPage() {
                   {antennas
                     .filter(a => {
                       if (!selectedCity) return false;
-                      const city = selectedCity.city.toLowerCase();
-                      // Simple matching for demo purposes
-                      return a.name.toLowerCase().includes(city) || 
-                             a.siteId.toLowerCase().includes(city.substring(0, 3));
+                      return cityForAntenna(a.latitude, a.longitude) === selectedCity.city
                     })
                     .map(a => {
                       const status = getWorstStatus(a);
@@ -683,10 +656,9 @@ export default function DashboardPage() {
                       );
                     })}
                   
-                  {selectedCity && antennas.filter(a => {
-                    const city = selectedCity.city.toLowerCase();
-                    return a.name.toLowerCase().includes(city) || a.siteId.toLowerCase().includes(city.substring(0, 3));
-                  }).length === 0 && (
+                  {selectedCity && antennas.filter(a =>
+                    cityForAntenna(a.latitude, a.longitude) === selectedCity.city
+                  ).length === 0 && (
                     <div className="py-8 text-center border border-dashed border-[var(--glass-border)] rounded-[var(--radius-md)]">
                       <p className="text-[11px] text-[var(--text-muted)] font-mono uppercase tracking-widest">
                         No active sites tracked in this sector
@@ -800,10 +772,21 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {activeAlerts.map((alarm, i) => (
+                {activeAlerts.map((alarm, i) => {
+                  const alarmAntenna = antennas.find(a =>
+                    (a.cells || []).some(c => c.currentAlarm?.id === alarm.id)
+                  )
+                  const alarmCity = alarmAntenna
+                    ? cityForAntenna(alarmAntenna.latitude, alarmAntenna.longitude)
+                    : null
+                  const cityWeather = alarmCity
+                    ? weatherDetails.find(w => w.city === alarmCity)
+                    : null
+
+                  return (
                    <div key={alarm.id} className="flex items-center justify-between py-3 border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors px-2 rounded-[var(--radius-md)] group">
                       <div className="flex items-center gap-4">
-                        <div 
+                        <div
                           className="size-2 rounded-full animate-pulse"
                           style={{ backgroundColor: getCSSVar(sevColorVar[alarm.severity]) }}
                         />
@@ -819,18 +802,19 @@ export default function DashboardPage() {
                       
                       <div className="flex items-center gap-6">
                         {/* Weather Widget */}
-                        <div className="hidden lg:flex items-center gap-2 px-2 py-1 rounded-md bg-[var(--accent-dim)] border border-[var(--border-accent)]">
-                          {(() => {
-                            const w = weatherData[i % weatherData.length]
-                            const Icon = weatherIcons[w.condition]
-                            return (
-                              <>
-                                <Icon className="size-3 text-[var(--accent-bright)]" />
-                                <span className="text-[9px] font-mono font-medium text-[var(--accent-bright)]">{w.temp}°C</span>
-                              </>
-                            )
-                          })()}
-                        </div>
+                        {cityWeather && (
+                          <div className="hidden lg:flex items-center gap-2 px-2 py-1 rounded-md bg-[var(--accent-dim)] border border-[var(--border-accent)]">
+                            {(() => {
+                              const Icon = weatherIcons[cityWeather.condition] ?? Cloud
+                              return (
+                                <>
+                                  <Icon className="size-3 text-[var(--accent-bright)]" />
+                                  <span className="text-[9px] font-mono font-medium text-[var(--accent-bright)]">{cityWeather.temp}°C</span>
+                                </>
+                              )
+                            })()}
+                          </div>
+                        )}
 
                         <div className="hidden md:flex flex-col items-end">
                           <span className="text-[11px] text-[var(--text-primary)] max-w-[250px] truncate text-right">
@@ -856,7 +840,8 @@ export default function DashboardPage() {
                         </div>
                       </div>
                    </div>
-                ))}
+                  )
+                })}
                 {activeAlerts.length === 0 && (
                   <div className="py-12 text-center">
                     <CheckCircle2 className="size-10 text-[var(--alarm-ok)] mx-auto mb-3 opacity-20" />
