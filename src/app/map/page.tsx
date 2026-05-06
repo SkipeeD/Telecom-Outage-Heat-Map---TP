@@ -69,10 +69,7 @@ export default function MapPage() {
         if (newCounts[status] !== undefined) {
           newCounts[status]++
         }
-        // 'all' now only shows sites with alarms
-        if (status !== 'ok') {
-          newCounts.all++
-        }
+        newCounts.all++
       })
       
       setCounts(newCounts)
@@ -134,8 +131,8 @@ export default function MapPage() {
   if (authLoading) return null
 
   const activeFilters = {
-    severities: selectedSeverity === 'all' 
-      ? ['critical', 'major', 'minor', 'warning'] as AlarmSeverity[]
+    severities: selectedSeverity === 'all'
+      ? undefined
       : [selectedSeverity as AlarmSeverity]
   }
 
@@ -155,7 +152,6 @@ export default function MapPage() {
           activeFilters={activeFilters}
           weatherRisk={weatherRisk}
           onAntennaClick={handleAntennaClick}
-          onSearchSelect={(antenna) => setSelectedId(antenna.id)}
         />
       </motion.div>
 

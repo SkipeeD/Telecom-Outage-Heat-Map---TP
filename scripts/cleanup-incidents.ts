@@ -15,7 +15,7 @@ import { resolve }  from 'path'
 config({ path: resolve(process.cwd(), '.env.local') })
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
-import { getFirestore, FieldValue }      from 'firebase-admin/firestore'
+import { getFirestore }                  from 'firebase-admin/firestore'
 
 if (getApps().length === 0) {
   const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
@@ -28,12 +28,6 @@ const db = getFirestore()
 
 const KEEP = 90
 const BATCH_SIZE = 400  // Firestore batch limit is 500; stay well under
-
-async function commitBatch(ops: (() => void)[], batchRef: ReturnType<typeof db.batch>) {
-  if (ops.length === 0) return
-  ops.forEach(op => op())
-  await batchRef.commit()
-}
 
 async function main() {
   console.log('[cleanup] Fetching all incidents…')

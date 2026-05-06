@@ -15,7 +15,7 @@ const severityRank: Record<AlarmSeverity, number> = {
   ok: 1,
 }
 
-function worstCell(antenna: Antenna): { technology: Technology; status: AlarmSeverity } {
+export function getWorstCell(antenna: Antenna): { technology: Technology; status: AlarmSeverity } {
   if (!antenna.cells || antenna.cells.length === 0) {
     return { technology: '4G', status: 'ok' }
   }
@@ -97,23 +97,29 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
         } else if (id === hoveredIdRef.current) {
           path.style.transform = 'scale(1.45)'
           path.style.filter    = ''
+        } else {
+          path.style.transform = 'scale(1)'
+          path.style.filter = ''
         }
       })
     }
     map.on('zoomstart', clearTransforms)
     map.on('zoomend',   restoreTransforms)
-    return () => { map.off('zoomstart', clearTransforms); map.off('zoomend', restoreTransforms) }
-  }, [map])
+    return () => {
+      map.off('zoomstart', clearTransforms)
+      map.off('zoomend', restoreTransforms)
+    }
+  }, [map, markerPaths])
 
   const antennaMarkers = useMemo(() => {
     return antennas.map(antenna => {
-      const { technology, status } = worstCell(antenna)
+      const { technology, status } = getWorstCell(antenna)
       const colors = getMarkerColor(technology, status)
       const city = cityForAntenna(antenna.latitude, antenna.longitude)
       const isWeatherRisk = !!(weatherRisk?.[city])
       return { ...antenna, worstTech: technology, worstStatus: status, colors, city, isWeatherRisk }
     })
-  }, [antennas, theme, weatherRisk])
+  }, [antennas, weatherRisk])
 
   // Apply CSS scale transforms on selection/hover change
   useEffect(() => {
@@ -129,7 +135,7 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
         path.style.filter    = ''
       }
     })
-  }, [selectedId, hoveredId])
+  }, [selectedId, hoveredId, markerPaths])
 
   return (
     <>
@@ -192,7 +198,10 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
                 remove: () => {
                   markerPaths.current.delete(marker.id)
                 },
-                click: (e) => onAntennaClick(marker, e.originalEvent.target as Element),
+                click: () => {
+                  const path = markerPaths.current.get(marker.id)
+                  if (path) onAntennaClick(marker, path)
+                },
                 mouseover: () => setHoveredId(marker.id),
                 mouseout: () => setHoveredId(null),
               }}

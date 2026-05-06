@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const authSession = request.cookies.get('auth-session')
   const { pathname } = request.nextUrl
 
   const publicRoutes = ['/login', '/register']
-  const authOnlyRoutes = ['/admin', '/dashboard', '/map']
   const isPublicRoute = publicRoutes.includes(pathname)
 
   // Allow verify-email for everyone

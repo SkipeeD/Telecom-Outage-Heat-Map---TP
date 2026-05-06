@@ -37,7 +37,6 @@ const itemVariants = {
 
 export function LoginForm({
   className,
-  ...props
 }: React.ComponentProps<"div">) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

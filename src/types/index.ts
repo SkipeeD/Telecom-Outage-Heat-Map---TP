@@ -73,3 +73,9 @@ export interface UserProfile {
   createdAt: string
 }
 
+export interface DashboardSummary {
+  resolvedAlarms: Alarm[]
+  longLivedAlarms: Alarm[]
+  incidents: Incident[]
+  updatedAt: string
+}

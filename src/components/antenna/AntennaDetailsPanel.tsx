@@ -158,7 +158,6 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
   }
 
   const resolvedAlarms = alarmHistory.filter(a => a.resolved)
-  const activeAlarms   = alarmHistory.filter(a => !a.resolved)
 
   const alarmTabCount    = (cell?.currentAlarm ? 1 : 0) + resolvedAlarms.length
   const incidentTabCount = incidents.filter(i => i.status !== 'CLOSED' && i.status !== 'RESOLVED').length
@@ -383,8 +382,6 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
               )}
               {tab === 'alarms' && (
                 <AlarmsTab
-                  cell={cell}
-                  alarmHistory={alarmHistory}
                   loading={loadingAlarms}
                   filteredAlarms={filteredAlarms}
                   sevFilter={sevFilter}
@@ -393,7 +390,6 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
               )}
               {tab === 'incidents' && (
                 <IncidentsTab
-                  incidents={incidents}
                   loading={loadingIncidents}
                   filteredIncidents={filteredIncidents}
                   incFilter={incFilter}
@@ -597,15 +593,13 @@ function OverviewTab({ antenna, cell, activeTech, alarmHistory, incidents, loadi
 const SEV_FILTERS: SevFilter[] = ['ALL', 'critical', 'major', 'minor', 'warning']
 
 interface AlarmsTabProps {
-  cell: Cell | null
-  alarmHistory: Alarm[]
   loading: boolean
   filteredAlarms: Alarm[]
   sevFilter: SevFilter
   setSevFilter: (f: SevFilter) => void
 }
 
-function AlarmsTab({ cell, alarmHistory, loading, filteredAlarms, sevFilter, setSevFilter }: AlarmsTabProps) {
+function AlarmsTab({ loading, filteredAlarms, sevFilter, setSevFilter }: AlarmsTabProps) {
   const filteredActive   = filteredAlarms.filter(a => !a.resolved)
   const filteredResolved = filteredAlarms.filter(a => a.resolved)
 
@@ -697,7 +691,6 @@ function AlarmsTab({ cell, alarmHistory, loading, filteredAlarms, sevFilter, set
 const STATUS_FILTERS: IncFilter[] = ['ALL', 'IN PROGRESS', 'ASSIGNED', 'RESOLVED', 'CLOSED']
 
 interface IncidentsTabProps {
-  incidents: Incident[]
   loading: boolean
   filteredIncidents: Incident[]
   incFilter: IncFilter
@@ -708,7 +701,7 @@ interface IncidentsTabProps {
 }
 
 function IncidentsTab({
-  incidents, loading, filteredIncidents, incFilter, setIncFilter,
+  loading, filteredIncidents, incFilter, setIncFilter,
   profile, canAssign, onUpdateAssignees,
 }: IncidentsTabProps) {
   const isEngineerOrAdmin = profile?.role === 'engineer' || profile?.role === 'admin'
