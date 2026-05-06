@@ -51,8 +51,6 @@ export function getMarkerColor(tech: Technology, severity: AlarmSeverity) {
   }
 }
 
-const WEATHER_RING_COLOR = '#f97316'
-
 interface MarkerLayerProps {
   antennas: Antenna[]
   selectedId?: string | null
@@ -151,31 +149,6 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
 
         return (
           <Fragment key={`${marker.id}-${theme}`}>
-            {/* Weather risk pulse ring */}
-            {marker.isWeatherRisk && (
-              <CircleMarker
-                center={[marker.latitude, marker.longitude]}
-                radius={14}
-                pathOptions={{
-                  fillColor: 'transparent',
-                  fillOpacity: 0,
-                  color: WEATHER_RING_COLOR,
-                  weight: 2,
-                  dashArray: '4 3',
-                }}
-                eventHandlers={{
-                  add: (e) => {
-                    const path = (e.target as unknown as { _path?: SVGElement })._path
-                    if (path) {
-                      path.style.transformBox = 'fill-box'
-                      path.style.transformOrigin = 'center'
-                      path.style.animation = 'weather-pulse 2s ease-in-out infinite'
-                      path.style.pointerEvents = 'none'
-                    }
-                  },
-                }}
-              />
-            )}
             <CircleMarker
               center={[marker.latitude, marker.longitude]}
               radius={7}
@@ -243,9 +216,9 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
                       <span
                         className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
                         style={{
-                          backgroundColor: `${WEATHER_RING_COLOR}22`,
-                          borderColor: `${WEATHER_RING_COLOR}66`,
-                          color: WEATHER_RING_COLOR,
+                          backgroundColor: '#f9731622',
+                          borderColor: '#f9731666',
+                          color: '#f97316',
                         }}
                       >
                         ⚠ weather

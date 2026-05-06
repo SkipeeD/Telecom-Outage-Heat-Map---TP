@@ -11,6 +11,7 @@ import { useFilters, FilterSeverity } from '@/components/FilterProvider'
 import type { Antenna, AlarmSeverity, Technology } from '@/types'
 import { AntennaPopup } from '@/components/antenna/AntennaPopup'
 import { AntennaDetailsPanel } from '@/components/antenna/AntennaDetailsPanel'
+import type { CityWeatherDetail } from '@/app/api/weather/route'
 
 const MapClient = dynamic(() => import('@/app/map/Map'), { 
   ssr: false,
@@ -48,6 +49,7 @@ export default function MapPage() {
   const [detailsAntenna, setDetailsAntenna] = useState<Antenna | null>(null)
   const [detailsTech, setDetailsTech] = useState<Technology | null>(null)
   const [weatherRisk, setWeatherRisk] = useState<Record<string, boolean>>({})
+  const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
 
   useEffect(() => {
     if (!user) return
@@ -85,8 +87,10 @@ export default function MapPage() {
       try {
         const res = await fetch('/api/weather')
         if (!res.ok || cancelled) return
-        const { weatherRisk: risk } = await res.json()
-        if (!cancelled) setWeatherRisk(risk ?? {})
+        const { weatherRisk: risk, weatherDetails: details } = await res.json()
+        if (cancelled) return
+        setWeatherRisk(risk ?? {})
+        setWeatherDetails(details ?? [])
       } catch {
         // silently ignore — weather is non-critical
       }
@@ -151,6 +155,7 @@ export default function MapPage() {
           selectedId={selectedId}
           activeFilters={activeFilters}
           weatherRisk={weatherRisk}
+          weatherDetails={weatherDetails}
           onAntennaClick={handleAntennaClick}
         />
       </motion.div>
