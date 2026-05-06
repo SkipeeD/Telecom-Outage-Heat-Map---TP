@@ -38,19 +38,25 @@ interface MapClientProps {
   }
   weatherRisk?: Record<string, boolean>
   onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
-  onSearchSelect?: (antenna: Antenna) => void
 }
 
-export default function MapClient({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick, onSearchSelect }: MapClientProps) {
+export default function MapClient({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick }: MapClientProps) {
   const atRiskCount = Object.values(weatherRisk ?? {}).filter(Boolean).length
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null)
   const markerPathsRef = useRef(new Map<string, SVGElement>())
+  const searchOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (searchOpenTimerRef.current) clearTimeout(searchOpenTimerRef.current)
+    }
+  }, [])
 
   function handleSearchSelect(antenna: Antenna) {
     setFlyTarget({ lat: antenna.latitude, lon: antenna.longitude })
-    onSearchSelect?.(antenna)
+    if (searchOpenTimerRef.current) clearTimeout(searchOpenTimerRef.current)
     // flyTo duration is 1.4s — wait for it to finish then open popup
-    setTimeout(() => {
+    searchOpenTimerRef.current = setTimeout(() => {
       const el = markerPathsRef.current.get(antenna.id)
       if (el) onAntennaClick(antenna, el)
     }, 1600)

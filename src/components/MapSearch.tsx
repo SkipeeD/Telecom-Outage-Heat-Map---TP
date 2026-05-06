@@ -6,6 +6,10 @@ import { Search } from 'lucide-react'
 import type { Antenna, Incident } from '@/types'
 import { getAllIncidents } from '@/lib/firestore'
 
+function normalize(str: string) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
 interface Result {
   antenna: Antenna
   label: string
@@ -28,14 +32,14 @@ export function MapSearch({ antennas, onSelect }: Props) {
   }, [])
 
   const results = useMemo((): Result[] => {
-    const q = query.trim().toLowerCase()
+    const q = normalize(query.trim())
     if (!q) return []
 
     const seen = new Set<string>()
     const out: Result[] = []
 
     for (const a of antennas) {
-      if (a.name.toLowerCase().includes(q) || a.siteId.toLowerCase().includes(q)) {
+      if (normalize(a.name).includes(q) || normalize(a.siteId).includes(q)) {
         if (!seen.has(a.id)) {
           seen.add(a.id)
           out.push({ antenna: a, label: a.name, sublabel: a.siteId })
@@ -44,7 +48,7 @@ export function MapSearch({ antennas, onSelect }: Props) {
     }
 
     for (const inc of incidents) {
-      if (inc.incidentNumber.toLowerCase().includes(q) || inc.siteId.toLowerCase().includes(q)) {
+      if (normalize(inc.incidentNumber).includes(q) || normalize(inc.siteId).includes(q)) {
         const antenna = antennas.find(a => a.id === inc.antennaId)
         if (antenna && !seen.has(antenna.id)) {
           seen.add(antenna.id)
@@ -53,7 +57,7 @@ export function MapSearch({ antennas, onSelect }: Props) {
       }
     }
 
-    return out.slice(0, 7)
+    return out.slice(0, 40)
   }, [query, antennas, incidents])
 
   function handleExpand() {
@@ -75,22 +79,30 @@ export function MapSearch({ antennas, onSelect }: Props) {
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9995] flex flex-col-reverse items-center gap-2">
       {/* Search pill */}
       <motion.div
-        animate={{ width: expanded ? 280 : 36 }}
+        animate={{ width: expanded ? 280 : 40 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        className="relative flex items-center h-9 rounded-[var(--radius-full)]
-          bg-[rgba(9,9,20,0.82)] backdrop-blur-xl backdrop-saturate-[260%]
-          border border-[rgba(255,255,255,0.1)]
-          shadow-[0_4px_24px_rgba(0,0,0,0.5)]
+        className="relative flex items-center justify-center h-10 rounded-[var(--radius-full)]
+          backdrop-blur-xl backdrop-saturate-[280%]
+          border shadow-[0_0_18px_rgba(124,111,247,0.25),0_4px_24px_rgba(0,0,0,0.55)]
           overflow-hidden"
+        style={{
+          background: expanded
+            ? 'rgba(14,12,38,0.88)'
+            : 'linear-gradient(135deg, rgba(124,111,247,0.18) 0%, rgba(9,9,28,0.88) 100%)',
+          borderColor: expanded ? 'rgba(124,111,247,0.25)' : 'rgba(124,111,247,0.45)',
+        }}
       >
         {/* Icon button — always visible, click or hover expands */}
         <button
           onClick={!expanded ? handleExpand : undefined}
           onMouseEnter={!expanded ? handleExpand : undefined}
-          className="shrink-0 w-9 h-9 flex items-center justify-center cursor-pointer"
+          className="shrink-0 w-10 h-10 flex items-center justify-center cursor-pointer"
           aria-label="Search"
         >
-          <Search className="size-3.5 text-[var(--text-secondary)]" />
+          <Search
+            className="size-4"
+            style={{ color: expanded ? 'var(--text-secondary)' : 'var(--accent-bright)' }}
+          />
         </button>
 
         <AnimatePresence>
@@ -103,10 +115,10 @@ export function MapSearch({ antennas, onSelect }: Props) {
               transition={{ duration: 0.15 }}
               value={query}
               onChange={e => setQuery(e.target.value)}
-              onBlur={() => { if (!query) handleCollapse() }}
+              onBlur={handleCollapse}
               onKeyDown={e => { if (e.key === 'Escape') handleCollapse() }}
               placeholder="Site, name or incident…"
-              className="flex-1 bg-transparent border-none outline-none pr-3
+              className="flex-1 bg-transparent border-none outline-none pr-4
                 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]
                 font-mono"
             />
@@ -127,6 +139,7 @@ export function MapSearch({ antennas, onSelect }: Props) {
               border border-[rgba(255,255,255,0.1)]
               shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
           >
+            <div className="max-h-[260px] overflow-y-auto scrollbar-hide">
             {results.map((r, i) => (
               <button
                 key={`${r.antenna.id}-${i}`}
@@ -146,6 +159,7 @@ export function MapSearch({ antennas, onSelect }: Props) {
                 </div>
               </button>
             ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

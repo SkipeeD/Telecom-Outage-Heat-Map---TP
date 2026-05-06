@@ -6,10 +6,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
-import { subscribeToAntennas, subscribeToResolvedAlarms, subscribeToLongLivedAlarms, subscribeToIncidents } from '@/lib/firestore'
+import { subscribeToAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
-import type { Antenna, AlarmSeverity, Technology, Alarm, Incident } from '@/types'
+import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary, Incident } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import {
@@ -119,14 +119,39 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return
     const unsubAntennas = subscribeToAntennas(setAntennas)
-    const unsubResolved = subscribeToResolvedAlarms(setResolvedAlarms)
-    const unsubLongLived = subscribeToLongLivedAlarms(setLongLivedAlarms)
-    const unsubIncidents = subscribeToIncidents(setIncidents)
+    return () => unsubAntennas()
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+
+    const fetchDashboardSummary = async () => {
+      try {
+        const idToken = await user.getIdToken()
+        const res = await fetch('/api/dashboard/summary', {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+        })
+        if (!res.ok || cancelled) return
+
+        const summary = await res.json() as DashboardSummary
+        if (cancelled) return
+
+        setResolvedAlarms(summary.resolvedAlarms)
+        setLongLivedAlarms(summary.longLivedAlarms)
+        setIncidents(summary.incidents)
+      } catch {
+        // dashboard history is non-critical; live topology stays active
+      }
+    }
+
+    void fetchDashboardSummary()
+    const id = window.setInterval(() => void fetchDashboardSummary(), 60 * 1000)
     return () => {
-      unsubAntennas()
-      unsubResolved()
-      unsubLongLived()
-      unsubIncidents()
+      cancelled = true
+      window.clearInterval(id)
     }
   }, [user])
 

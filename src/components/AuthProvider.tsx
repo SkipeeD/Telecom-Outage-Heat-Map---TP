@@ -33,7 +33,6 @@ function getFallbackProfile(firebaseUser: User, role: UserProfile['role'] = 'use
   return {
     uid: firebaseUser.uid,
     email: firebaseUser.email ?? '',
-    displayName: firebaseUser.displayName ?? undefined,
     role,
     createdAt: new Date().toISOString(),
   }
