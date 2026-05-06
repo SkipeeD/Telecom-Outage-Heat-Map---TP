@@ -117,8 +117,19 @@ export async function createIncidentForAlarm(alarm: Alarm): Promise<string> {
 }
 
 export async function getAllUsers(): Promise<UserProfile[]> {
-  const snapshot = await getDocs(collection(db, 'users'))
-  return snapshot.docs.map(d => d.data() as UserProfile)
+  const idToken = await auth.currentUser?.getIdToken()
+  if (!idToken) throw new Error('Not authenticated')
+
+  const res = await fetch('/api/users', {
+    headers: {
+      'Authorization': `Bearer ${idToken}`,
+    },
+  })
+
+  if (!res.ok) throw new Error('Failed to load users')
+
+  const data = await res.json() as { users?: UserProfile[] }
+  return data.users ?? []
 }
 
 export async function getEngineers(): Promise<UserProfile[]> {

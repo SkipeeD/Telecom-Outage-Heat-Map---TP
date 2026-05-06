@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { CloudRain, CloudOff } from 'lucide-react'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
 import { MarkerLayer } from './MarkerLayer'
 import { MapSearch } from './MapSearch'
+import { WeatherOverlayToggle } from './WeatherOverlayToggle'
+import { WeatherOverlay } from './WeatherOverlay'
+import { useWeatherOverlay } from '@/hooks/useWeatherOverlay'
+import type { CityWeatherDetail } from '@/app/api/weather/route'
 
 function ResizeHandler() {
   const map = useMap()
@@ -37,11 +40,12 @@ interface MapClientProps {
     severities?: AlarmSeverity[]
   }
   weatherRisk?: Record<string, boolean>
+  weatherDetails?: CityWeatherDetail[]
   onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
 }
 
-export default function MapClient({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick }: MapClientProps) {
-  const atRiskCount = Object.values(weatherRisk ?? {}).filter(Boolean).length
+export default function MapClient({ antennas, selectedId, activeFilters, weatherRisk, weatherDetails, onAntennaClick }: MapClientProps) {
+  const { enabled: weatherOverlayOn, toggle: toggleWeatherOverlay } = useWeatherOverlay()
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null)
   const markerPathsRef = useRef(new Map<string, SVGElement>())
   const searchOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -82,40 +86,18 @@ export default function MapClient({ antennas, selectedId, activeFilters, weather
           antennas={antennas}
           selectedId={selectedId}
           activeFilters={activeFilters}
-          weatherRisk={weatherRisk}
+          weatherRisk={weatherOverlayOn ? weatherRisk : undefined}
           onAntennaClick={onAntennaClick}
           markerPathsRef={markerPathsRef}
         />
         <FlyController target={flyTarget} />
         <ResizeHandler />
+        <WeatherOverlay enabled={weatherOverlayOn} details={weatherDetails ?? []} />
       </MapContainer>
 
       <MapSearch antennas={antennas} onSelect={handleSearchSelect} />
 
-      {/* Weather legend */}
-      <div
-        className="fixed bottom-6 left-6 pointer-events-none flex items-center gap-2 px-3 py-2
-          rounded-[var(--radius-md)] border shadow-[var(--shadow-lg)]
-          bg-[var(--bg-overlay)] border-[var(--glass-border)] backdrop-blur-md"
-        style={{ zIndex: 9990 }}
-      >
-        {atRiskCount > 0 ? (
-          <>
-            <CloudRain className="size-3.5 shrink-0" style={{ color: '#f97316' }} />
-            <span className="text-[11px] font-mono uppercase tracking-widest text-[var(--text-secondary)]">
-              {atRiskCount} {atRiskCount === 1 ? 'city' : 'cities'} at risk
-            </span>
-            <span className="size-1.5 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: '#f97316' }} />
-          </>
-        ) : (
-          <>
-            <CloudOff className="size-3.5 shrink-0 text-[var(--alarm-ok)]" />
-            <span className="text-[11px] font-mono uppercase tracking-widest text-[var(--text-secondary)]">
-              Weather nominal
-            </span>
-          </>
-        )}
-      </div>
+      <WeatherOverlayToggle enabled={weatherOverlayOn} onToggle={toggleWeatherOverlay} />
     </div>
   )
 }
