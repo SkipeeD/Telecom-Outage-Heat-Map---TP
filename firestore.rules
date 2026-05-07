@@ -12,6 +12,15 @@ service cloud.firestore {
         request.auth.token.role in ['engineer', 'admin'];
     }
 
+    // Returns true if the calling user is in the incident's assignees list
+    // Intentionally does NOT check the JWT role claim — custom claims require a
+    // token refresh and may not be present on an existing session.
+    function isAssignedEngineer() {
+      return request.auth != null &&
+        'assignees' in resource.data &&
+        request.auth.uid in resource.data.assignees.map(a, a.uid);
+    }
+
     match /topology/{document=**} {
       allow read: if request.auth != null;
       allow write: if false;
@@ -22,11 +31,30 @@ service cloud.firestore {
       allow write: if isEngineerOrAdmin();
     }
 
-    match /incidents/{document=**} {
+    match /incidents/{incidentNumber} {
       allow read: if request.auth != null;
       allow create: if isEngineerOrAdmin();
-      allow update: if isAdmin();
+
+      // Admins can update anything.
+      // Assigned engineers can only touch lifecycle fields.
+      allow update: if isAdmin()
+        || (isAssignedEngineer() &&
+            request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasOnly(['status', 'resolvedDate', 'closedDate']));
+
       allow delete: if false;
+    }
+
+    // Per-incident team chat
+    // Incident IDs are timestamp-based and not guessable; the senderId check
+    // prevents impersonation. Cross-collection get() is avoided intentionally
+    // because it causes permission errors on collection queries.
+    match /chats/{incidentId}/messages/{messageId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if false;
     }
 
     match /users/{userId} {

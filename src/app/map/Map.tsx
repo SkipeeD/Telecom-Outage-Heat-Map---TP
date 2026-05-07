@@ -7,6 +7,7 @@ import type { CityWeatherDetail } from '@/app/api/weather/route'
 export interface MapProps {
   antennas: Antenna[]
   selectedId?: string | null
+  focusAntennaId?: string | null
   activeFilters?: {
     technologies?: Technology[]
     severities?: AlarmSeverity[]
@@ -31,11 +32,12 @@ const MapWithNoSSR = dynamic(() => import('../../components/MapClient'), {
   ),
 })
 
-export default function Map({ antennas, selectedId, activeFilters, weatherRisk, weatherDetails, onAntennaClick }: MapProps) {
+export default function Map({ antennas, selectedId, focusAntennaId, activeFilters, weatherRisk, weatherDetails, onAntennaClick }: MapProps) {
   return (
     <MapWithNoSSR
       antennas={antennas}
       selectedId={selectedId}
+      focusAntennaId={focusAntennaId}
       activeFilters={activeFilters}
       weatherRisk={weatherRisk}
       weatherDetails={weatherDetails}

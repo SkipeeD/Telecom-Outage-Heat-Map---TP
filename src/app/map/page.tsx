@@ -2,7 +2,8 @@
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { motion } from 'motion/react'
 import { subscribeToAntennas } from '@/lib/firestore'
@@ -39,9 +40,11 @@ function getWorstStatus(antenna: Antenna): AlarmSeverity {
   ).status
 }
 
-export default function MapPage() {
+function MapPageInner() {
   const { user, loading: authLoading } = useAuth()
   const { selectedSeverity, setCounts } = useFilters()
+  const searchParams = useSearchParams()
+  const focusAntennaId = searchParams.get('antennaId')
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [popupAntenna, setPopupAntenna] = useState<Antenna | null>(null)
@@ -153,6 +156,7 @@ export default function MapPage() {
         <MapClient
           antennas={antennas}
           selectedId={selectedId}
+          focusAntennaId={focusAntennaId}
           activeFilters={activeFilters}
           weatherRisk={weatherRisk}
           weatherDetails={weatherDetails}
@@ -172,10 +176,19 @@ export default function MapPage() {
 
       <AntennaDetailsPanel
         antenna={detailsAntenna ?? { id: '', name: '', siteId: '', provider: '', latitude: 0, longitude: 0, cells: [] }}
+        allAntennas={antennas}
         initialTech={detailsTech ?? '4G'}
         open={!!detailsAntenna}
         onClose={handleDetailsClose}
       />
     </div>
+  )
+}
+
+export default function MapPage() {
+  return (
+    <Suspense>
+      <MapPageInner />
+    </Suspense>
   )
 }
