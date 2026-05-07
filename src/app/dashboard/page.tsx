@@ -1,25 +1,50 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion } from 'motion/react'
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
-import { subscribeToAntennas, subscribeToResolvedAlarms, subscribeToLongLivedAlarms } from '@/lib/firestore'
+import { subscribeToAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
-import type { Antenna, AlarmSeverity, Technology, Alarm } from '@/types'
+import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary, Incident } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
-import { 
-  Activity, ShieldAlert, CheckCircle2, Zap, SignalHigh, Globe, Download, Clock, History,
-  ArrowRight
+import {
+  Activity, ShieldAlert, CheckCircle2, Zap, Globe, Download, Clock, History,
+  ArrowRight, Cloud, CloudRain, Sun, Wind, Thermometer, LucideIcon, MapPin, Users
 } from 'lucide-react'
 import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
+import { cityForAntenna } from '@/lib/weather-cities'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import type { CityWeatherDetail } from '@/app/api/weather/route'
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
+
+const weatherIcons: Record<string, LucideIcon> = {
+  sunny: Sun,
+  rainy: CloudRain,
+  cloudy: Cloud,
+  stormy: Zap,
+  windy: Wind,
+}
+
+const riskColors: Record<string, string> = {
+  low:    'var(--alarm-ok)',
+  medium: 'var(--alarm-warning)',
+  high:   'var(--alarm-critical)',
+}
+
+const riskRank: Record<string, number> = { high: 3, medium: 2, low: 1 }
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -64,18 +89,97 @@ export default function DashboardPage() {
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  
+  const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
+  const [selectedCity, setSelectedCity] = useState<CityWeatherDetail | null>(null)
+  const [isAutoScrolling, setIsAutoScrolling] = useState(true)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isAutoScrolling || !scrollRef.current) return
+
+    const interval = setInterval(() => {
+      if (scrollRef.current) {
+        const { scrollLeft, scrollWidth } = scrollRef.current
+        const halfWidth = (scrollWidth - 16) / 2 // 16 is gap/padding compensation if any, but simpler:
+        
+        // Use a more robust check for infinite loop
+        if (scrollLeft >= halfWidth) {
+          scrollRef.current.scrollLeft = 0
+        } else {
+          scrollRef.current.scrollBy({ left: 1, behavior: 'auto' })
+        }
+      }
+    }, 30)
+
+    return () => clearInterval(interval)
+  }, [isAutoScrolling])
 
   useEffect(() => {
     if (!user) return
     const unsubAntennas = subscribeToAntennas(setAntennas)
-    const unsubResolved = subscribeToResolvedAlarms(setResolvedAlarms)
-    const unsubLongLived = subscribeToLongLivedAlarms(setLongLivedAlarms)
+    return () => unsubAntennas()
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+
+    const fetchDashboardSummary = async () => {
+      try {
+        const idToken = await user.getIdToken()
+        const res = await fetch('/api/dashboard/summary', {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+        })
+        if (!res.ok || cancelled) return
+
+        const summary = await res.json() as DashboardSummary
+        if (cancelled) return
+
+        setResolvedAlarms(summary.resolvedAlarms)
+        setLongLivedAlarms(summary.longLivedAlarms)
+        setIncidents(summary.incidents)
+      } catch {
+        // dashboard history is non-critical; live topology stays active
+      }
+    }
+
+    void fetchDashboardSummary()
+    const id = window.setInterval(() => void fetchDashboardSummary(), 60 * 1000)
     return () => {
-      unsubAntennas()
-      unsubResolved()
-      unsubLongLived()
+      cancelled = true
+      window.clearInterval(id)
     }
   }, [user])
+
+  const fetchWeather = useCallback(async () => {
+    try {
+      const res = await fetch('/api/weather')
+      if (!res.ok) return
+      const { weatherDetails: details } = await res.json()
+      if (Array.isArray(details)) {
+        const sorted = [...details].sort((a, b) => riskRank[b.risk] - riskRank[a.risk])
+        setWeatherDetails(sorted)
+      }
+    } catch {
+      // non-critical — weather data stays empty on failure
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    const timeoutId = window.setTimeout(() => {
+      void fetchWeather()
+    }, 0)
+    const id = setInterval(fetchWeather, 30 * 60 * 1000)
+    return () => {
+      window.clearTimeout(timeoutId)
+      clearInterval(id)
+    }
+  }, [user, fetchWeather])
 
   const stats = useMemo(() => {
     const total = antennas.length
@@ -177,7 +281,13 @@ export default function DashboardPage() {
   const activeAlerts = antennas
     .flatMap(a => (a.cells || [])
       .filter(c => c.currentAlarm && !c.currentAlarm.resolved)
-      .map(c => ({ ...c.currentAlarm!, antennaName: a.name }))
+      .map(c => {
+        const alarm = c.currentAlarm!
+        const incident = incidents.find(i =>
+          i.alarmId === alarm.id || (alarm.incidentId !== null && i.incidentNumber === alarm.incidentId)
+        )
+        return { ...alarm, antennaName: a.name, incident }
+      })
     )
     .sort((a, b) => new Date(b.alarmTime).getTime() - new Date(a.alarmTime).getTime())
     .slice(0, 8)
@@ -444,6 +554,162 @@ export default function DashboardPage() {
           </Card>
         </motion.div>
 
+        {/* Weather Impact Analysis */}
+        <motion.div variants={itemVariants}>
+          <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest flex items-center gap-2">
+                  <Cloud className="size-4 text-[var(--accent)]" />
+                  Regional Weather Impact
+                </CardTitle>
+                <p className="text-[10px] text-[var(--text-muted)]">Live weather influence on network reliability across Romania</p>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-muted)] border border-[var(--glass-border)]">
+                <Thermometer className="size-3 text-[var(--text-muted)]" />
+                <span className="text-[10px] font-mono text-[var(--text-secondary)]">
+                  {weatherDetails.length > 0
+                    ? `AVG ${Math.round(weatherDetails.reduce((s, w) => s + w.temp, 0) / weatherDetails.length)}°C`
+                    : 'Loading…'}
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div 
+                ref={scrollRef}
+                className="flex gap-4 mt-2 overflow-x-auto pb-4 scrollbar-hide select-none active:cursor-grabbing"
+                onMouseEnter={() => setIsAutoScrolling(false)}
+                onMouseLeave={() => setIsAutoScrolling(true)}
+                onTouchStart={() => setIsAutoScrolling(false)}
+              >
+                {weatherDetails.length === 0 ? (
+                  <div className="flex items-center gap-2 py-6 px-2 text-[11px] font-mono text-[var(--text-muted)] animate-pulse uppercase tracking-widest">
+                    Loading weather data…
+                  </div>
+                ) : [...weatherDetails, ...weatherDetails].map((w, idx) => {
+                  const Icon = weatherIcons[w.condition] ?? Cloud
+                  return (
+                    <div
+                      key={`${w.city}-${idx}`}
+                      onClick={() => setSelectedCity(w)}
+                      className="min-w-[240px] p-3 rounded-[var(--radius-md)] bg-[var(--glass-hover)] border border-[var(--glass-border)] flex flex-col gap-3 group hover:border-[var(--accent)] transition-all cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-[12px] font-bold text-[var(--text-primary)]">{w.city}</span>
+                          <span className="text-[9px] text-[var(--text-muted)] uppercase tracking-tighter">{w.region}</span>
+                        </div>
+                        <Icon className="size-5 text-[var(--text-secondary)] group-hover:text-[var(--accent)] transition-colors" />
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-[14px] font-mono font-bold text-[var(--text-primary)]">{w.temp}°C</span>
+                        <div 
+                          className="px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-widest"
+                          style={{ 
+                            backgroundColor: `${riskColors[w.risk]}22`,
+                            color: riskColors[w.risk],
+                            border: `1px solid ${riskColors[w.risk]}44`
+                          }}
+                        >
+                          {w.risk} risk
+                        </div>
+                      </div>
+                      
+                      <p className="text-[9px] text-[var(--text-muted)] leading-tight">
+                        {w.description}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* City Sites Popup */}
+        <Dialog open={!!selectedCity} onOpenChange={(open) => !open && setSelectedCity(null)}>
+          <DialogContent className="max-w-2xl bg-[var(--bg-overlay)] border-[var(--glass-border)] backdrop-blur-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-[18px] font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <MapPin className="size-5 text-[var(--accent)]" />
+                Infrastructure Status: {selectedCity?.city}
+              </DialogTitle>
+              <DialogDescription className="text-[12px] text-[var(--text-muted)]">
+                Network health and site distribution in the {selectedCity?.region} region.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="mt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-[var(--radius-md)] bg-[var(--bg-muted)] border border-[var(--glass-border)]">
+                  <span className="block text-[9px] text-[var(--text-muted)] uppercase tracking-widest mb-1">Temperature</span>
+                  <span className="text-lg font-mono font-bold text-[var(--text-primary)]">{selectedCity?.temp}°C</span>
+                </div>
+                <div className="p-3 rounded-[var(--radius-md)] bg-[var(--bg-muted)] border border-[var(--glass-border)]">
+                  <span className="block text-[9px] text-[var(--text-muted)] uppercase tracking-widest mb-1">Impact Risk</span>
+                  <span 
+                    className="text-lg font-bold uppercase tracking-tight"
+                    style={{ color: selectedCity ? riskColors[selectedCity.risk] : '' }}
+                  >
+                    {selectedCity?.risk}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-widest">Regional Sites</h3>
+                <div className="max-h-[300px] overflow-y-auto pr-2 space-y-2 scrollbar-hide">
+                  {antennas
+                    .filter(a => {
+                      if (!selectedCity) return false;
+                      return cityForAntenna(a.latitude, a.longitude) === selectedCity.city
+                    })
+                    .map(a => {
+                      const status = getWorstStatus(a);
+                      return (
+                        <div key={a.id} className="flex items-center justify-between p-3 rounded-[var(--radius-md)] bg-[var(--glass-hover)] border border-[var(--glass-border)] group hover:border-[var(--accent)] transition-all">
+                          <div className="flex items-center gap-3">
+                            <div 
+                              className="size-2 rounded-full animate-pulse"
+                              style={{ backgroundColor: getCSSVar(sevColorVar[status]) }}
+                            />
+                            <div className="flex flex-col">
+                              <span className="text-[12px] font-semibold text-[var(--text-primary)]">{a.name}</span>
+                              <span className="text-[10px] font-mono text-[var(--text-muted)]">{a.siteId}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="flex -space-x-1">
+                              {a.cells.map((c, idx) => (
+                                <div 
+                                  key={idx}
+                                  className="size-3 rounded-full border border-[var(--bg-base)]"
+                                  style={{ backgroundColor: getCSSVar(techColorVar[c.technology]) }}
+                                  title={c.technology}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  
+                  {selectedCity && antennas.filter(a =>
+                    cityForAntenna(a.latitude, a.longitude) === selectedCity.city
+                  ).length === 0 && (
+                    <div className="py-8 text-center border border-dashed border-[var(--glass-border)] rounded-[var(--radius-md)]">
+                      <p className="text-[11px] text-[var(--text-muted)] font-mono uppercase tracking-widest">
+                        No active sites tracked in this sector
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Chronic Alarms */}
         <motion.div variants={itemVariants}>
           <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
@@ -545,10 +811,22 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {activeAlerts.map((alarm, i) => (
+                {activeAlerts.map((alarm) => {
+                  const assignees = alarm.incident?.assignees ?? []
+                  const alarmAntenna = antennas.find(a =>
+                    (a.cells || []).some(c => c.currentAlarm?.id === alarm.id)
+                  )
+                  const alarmCity = alarmAntenna
+                    ? cityForAntenna(alarmAntenna.latitude, alarmAntenna.longitude)
+                    : null
+                  const cityWeather = alarmCity
+                    ? weatherDetails.find(w => w.city === alarmCity)
+                    : null
+
+                  return (
                    <div key={alarm.id} className="flex items-center justify-between py-3 border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors px-2 rounded-[var(--radius-md)] group">
                       <div className="flex items-center gap-4">
-                        <div 
+                        <div
                           className="size-2 rounded-full animate-pulse"
                           style={{ backgroundColor: getCSSVar(sevColorVar[alarm.severity]) }}
                         />
@@ -563,6 +841,21 @@ export default function DashboardPage() {
                       </div>
                       
                       <div className="flex items-center gap-6">
+                        {/* Weather Widget */}
+                        {cityWeather && (
+                          <div className="hidden lg:flex items-center gap-2 px-2 py-1 rounded-md bg-[var(--accent-dim)] border border-[var(--border-accent)]">
+                            {(() => {
+                              const Icon = weatherIcons[cityWeather.condition] ?? Cloud
+                              return (
+                                <>
+                                  <Icon className="size-3 text-[var(--accent-bright)]" />
+                                  <span className="text-[9px] font-mono font-medium text-[var(--accent-bright)]">{cityWeather.temp}°C</span>
+                                </>
+                              )
+                            })()}
+                          </div>
+                        )}
+
                         <div className="hidden md:flex flex-col items-end">
                           <span className="text-[11px] text-[var(--text-primary)] max-w-[250px] truncate text-right">
                             {alarm.text}
@@ -572,6 +865,49 @@ export default function DashboardPage() {
                             <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-tighter">
                               Started {relTime(alarm.alarmTime)}
                             </span>
+                          </div>
+                          <div className="flex items-center justify-end gap-2 mt-1">
+                            <Users className="size-3 text-[var(--alarm-ok)]" />
+                            {assignees.length === 0 ? (
+                              <span className="text-[10px] font-mono text-[var(--text-muted)] italic">
+                                No engineers assigned
+                              </span>
+                            ) : (
+                              <div className="flex items-center -space-x-1.5">
+                                {assignees.slice(0, 4).map((assignee, index) => {
+                                  const label = assignee.displayName ?? assignee.email.split('@')[0]
+                                  const initials = label.slice(0, 2).toUpperCase()
+
+                                  return (
+                                    <div
+                                      key={assignee.uid}
+                                      title={assignee.email}
+                                      className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[9px] font-bold ring-2 ring-[var(--bg-base)]"
+                                      style={{
+                                        background: 'color-mix(in srgb, var(--alarm-ok) 15%, var(--bg-subtle))',
+                                        color: 'var(--alarm-ok)',
+                                        border: '1px solid rgba(52,211,153,0.3)',
+                                        zIndex: assignees.length - index,
+                                      }}
+                                    >
+                                      {initials}
+                                    </div>
+                                  )
+                                })}
+                                {assignees.length > 4 && (
+                                  <div
+                                    className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[8px] font-bold ring-2 ring-[var(--bg-base)]"
+                                    style={{
+                                      background: 'var(--bg-subtle)',
+                                      color: 'var(--text-muted)',
+                                      border: '1px solid var(--glass-border)',
+                                    }}
+                                  >
+                                    +{assignees.length - 4}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                         
@@ -587,7 +923,8 @@ export default function DashboardPage() {
                         </div>
                       </div>
                    </div>
-                ))}
+                  )
+                })}
                 {activeAlerts.length === 0 && (
                   <div className="py-12 text-center">
                     <CheckCircle2 className="size-10 text-[var(--alarm-ok)] mx-auto mb-3 opacity-20" />

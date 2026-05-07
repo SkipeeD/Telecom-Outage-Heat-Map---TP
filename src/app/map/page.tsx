@@ -11,6 +11,7 @@ import { useFilters, FilterSeverity } from '@/components/FilterProvider'
 import type { Antenna, AlarmSeverity, Technology } from '@/types'
 import { AntennaPopup } from '@/components/antenna/AntennaPopup'
 import { AntennaDetailsPanel } from '@/components/antenna/AntennaDetailsPanel'
+import type { CityWeatherDetail } from '@/app/api/weather/route'
 
 const MapClient = dynamic(() => import('@/app/map/Map'), { 
   ssr: false,
@@ -47,6 +48,8 @@ export default function MapPage() {
   const [popupAnchor, setPopupAnchor] = useState<Element | null>(null)
   const [detailsAntenna, setDetailsAntenna] = useState<Antenna | null>(null)
   const [detailsTech, setDetailsTech] = useState<Technology | null>(null)
+  const [weatherRisk, setWeatherRisk] = useState<Record<string, boolean>>({})
+  const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
 
   useEffect(() => {
     if (!user) return
@@ -68,16 +71,35 @@ export default function MapPage() {
         if (newCounts[status] !== undefined) {
           newCounts[status]++
         }
-        // 'all' now only shows sites with alarms
-        if (status !== 'ok') {
-          newCounts.all++
-        }
+        newCounts.all++
       })
       
       setCounts(newCounts)
     })
     return () => unsubscribe()
   }, [user, setCounts])
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+
+    const fetchWeather = async () => {
+      try {
+        const res = await fetch('/api/weather')
+        if (!res.ok || cancelled) return
+        const { weatherRisk: risk, weatherDetails: details } = await res.json()
+        if (cancelled) return
+        setWeatherRisk(risk ?? {})
+        setWeatherDetails(details ?? [])
+      } catch {
+        // silently ignore — weather is non-critical
+      }
+    }
+
+    void fetchWeather()
+    const id = setInterval(() => void fetchWeather(), 30 * 60 * 1000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [user])
 
   const handleAntennaClick = (antenna: Antenna, anchorEl: Element) => {
     const isDeselecting = selectedId === antenna.id
@@ -113,8 +135,8 @@ export default function MapPage() {
   if (authLoading) return null
 
   const activeFilters = {
-    severities: selectedSeverity === 'all' 
-      ? ['critical', 'major', 'minor', 'warning'] as AlarmSeverity[]
+    severities: selectedSeverity === 'all'
+      ? undefined
       : [selectedSeverity as AlarmSeverity]
   }
 
@@ -124,17 +146,18 @@ export default function MapPage() {
       {/* Map Area */}
       <motion.div
         className="flex-1 relative min-w-0"
-        initial={{ opacity: 0, filter: 'blur(4px)' }}
-        animate={{ opacity: 1, filter: 'blur(0px)' }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         transition={{ duration: 0.45, ease: EASE }}
       >
         <MapClient
           antennas={antennas}
           selectedId={selectedId}
           activeFilters={activeFilters}
+          weatherRisk={weatherRisk}
+          weatherDetails={weatherDetails}
           onAntennaClick={handleAntennaClick}
         />
-
       </motion.div>
 
       {popupAntenna && (

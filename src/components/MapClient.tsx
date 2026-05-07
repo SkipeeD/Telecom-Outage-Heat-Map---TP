@@ -1,10 +1,15 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
 import { MarkerLayer } from './MarkerLayer'
+import { MapSearch } from './MapSearch'
+import { WeatherOverlayToggle } from './WeatherOverlayToggle'
+import { WeatherOverlay } from './WeatherOverlay'
+import { useWeatherOverlay } from '@/hooks/useWeatherOverlay'
+import type { CityWeatherDetail } from '@/app/api/weather/route'
 
 function ResizeHandler() {
   const map = useMap()
@@ -16,6 +21,17 @@ function ResizeHandler() {
   return null
 }
 
+interface FlyTarget { lat: number; lon: number }
+
+function FlyController({ target }: { target: FlyTarget | null }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!target) return
+    map.flyTo([target.lat, target.lon], 14, { duration: 1.4 })
+  }, [target, map])
+  return null
+}
+
 interface MapClientProps {
   antennas: Antenna[]
   selectedId?: string | null
@@ -23,32 +39,65 @@ interface MapClientProps {
     technologies?: Technology[]
     severities?: AlarmSeverity[]
   }
+  weatherRisk?: Record<string, boolean>
+  weatherDetails?: CityWeatherDetail[]
   onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
 }
 
-export default function MapClient({ antennas, selectedId, activeFilters, onAntennaClick }: MapClientProps) {
+export default function MapClient({ antennas, selectedId, activeFilters, weatherRisk, weatherDetails, onAntennaClick }: MapClientProps) {
+  const { enabled: weatherOverlayOn, toggle: toggleWeatherOverlay } = useWeatherOverlay()
+  const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null)
+  const markerPathsRef = useRef(new Map<string, SVGElement>())
+  const searchOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (searchOpenTimerRef.current) clearTimeout(searchOpenTimerRef.current)
+    }
+  }, [])
+
+  function handleSearchSelect(antenna: Antenna) {
+    setFlyTarget({ lat: antenna.latitude, lon: antenna.longitude })
+    if (searchOpenTimerRef.current) clearTimeout(searchOpenTimerRef.current)
+    // flyTo duration is 1.4s — wait for it to finish then open popup
+    searchOpenTimerRef.current = setTimeout(() => {
+      const el = markerPathsRef.current.get(antenna.id)
+      if (el) onAntennaClick(antenna, el)
+    }, 1600)
+  }
+
   return (
-    <MapContainer
-      center={[45.9, 24.9]}
-      zoom={7}
-      zoomControl={false}
-      style={{ width: '100%', height: '100%', background: '#1a1a2e' }}
-    >
-      <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        subdomains="abcd"
-        maxZoom={20}
-        keepBuffer={6}
-        updateWhenIdle={false}
-      />
-      <MarkerLayer 
-        antennas={antennas} 
-        selectedId={selectedId}
-        activeFilters={activeFilters}
-        onAntennaClick={onAntennaClick} 
-      />
-      <ResizeHandler />
-    </MapContainer>
+    <div className="absolute inset-0">
+      <MapContainer
+        center={[45.9, 24.9]}
+        zoom={7}
+        zoomControl={false}
+        attributionControl={false}
+        style={{ width: '100%', height: '100%', background: '#1a1a2e' }}
+      >
+        <TileLayer
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          subdomains="abcd"
+          maxZoom={20}
+          keepBuffer={6}
+          updateWhenIdle={false}
+        />
+        <MarkerLayer
+          antennas={antennas}
+          selectedId={selectedId}
+          activeFilters={activeFilters}
+          weatherRisk={weatherOverlayOn ? weatherRisk : undefined}
+          onAntennaClick={onAntennaClick}
+          markerPathsRef={markerPathsRef}
+        />
+        <FlyController target={flyTarget} />
+        <ResizeHandler />
+        <WeatherOverlay enabled={weatherOverlayOn} details={weatherDetails ?? []} />
+      </MapContainer>
+
+      <MapSearch antennas={antennas} onSelect={handleSearchSelect} />
+
+      <WeatherOverlayToggle enabled={weatherOverlayOn} onToggle={toggleWeatherOverlay} />
+    </div>
   )
 }

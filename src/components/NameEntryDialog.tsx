@@ -38,14 +38,7 @@ export function NameEntryDialog() {
 
   // 2. Control showing with a slight delay to allow redirects to settle
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout
-
-    if (shouldShow) {
-      // Slightly longer delay ensures the map and layout have settled
-      timeoutId = setTimeout(() => setShow(true), 500)
-    } else {
-      setShow(false)
-    }
+    const timeoutId = setTimeout(() => setShow(shouldShow), shouldShow ? 500 : 0)
 
     return () => clearTimeout(timeoutId)
   }, [shouldShow])

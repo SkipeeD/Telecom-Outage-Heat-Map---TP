@@ -5,7 +5,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
-import type { Technology, AlarmSeverity, Alarm } from '../src/types'
+import type { Technology, AlarmSeverity, Alarm, Cell } from '../src/types'
 
 if (getApps().length === 0) {
   const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
@@ -15,6 +15,7 @@ if (getApps().length === 0) {
 }
 
 const db = getFirestore()
+const SIMULATION_STATE_REF = db.collection('config').doc('simulationState')
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -120,25 +121,59 @@ let allCells: CellEntry[] = []
 // alarm doc id → alarm doc
 const activeAlarmCache = new Map<string, Alarm>()
 
-// Topology cells cache — read once on first access, never again within a run.
-// antennaId → cells array
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const topologyCache = new Map<string, any[]>()
+let incidentCounter = 1
+let stateDirty = false
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getCells(antennaId: string): Promise<any[]> {
-  const cached = topologyCache.get(antennaId)
-  if (cached !== undefined) return cached
-  const snap = await db.collection('topology').doc(antennaId).get()
-  const cells = snap.data()?.cells ?? []
-  topologyCache.set(antennaId, cells)
-  return cells
+interface SimulationState {
+  version: 1
+  activeAlarms: Record<string, Alarm>
+  incidentCounter: number
+  updatedAt: string
 }
 
-let incidentCounter = 1
+function alarmIdForCell(antennaId: string, technology: Technology): string {
+  return `${antennaId}-${technology.toLowerCase()}-alarm-active`
+}
+
+function buildCells(antennaId: string): Cell[] {
+  return allCells
+    .filter(c => c.antennaId === antennaId)
+    .map(({ technology }) => {
+      const alarm = activeAlarmCache.get(alarmIdForCell(antennaId, technology))
+      return alarm
+        ? { technology, status: alarm.severity, currentAlarm: alarm }
+        : { technology, status: 'ok' }
+    })
+}
+
+async function loadSimulationState(): Promise<boolean> {
+  const stateSnap = await SIMULATION_STATE_REF.get()
+  if (!stateSnap.exists) return false
+
+  const state = stateSnap.data() as Partial<SimulationState>
+  if (!state.activeAlarms || typeof state.incidentCounter !== 'number') return false
+
+  activeAlarmCache.clear()
+  for (const [alarmId, alarm] of Object.entries(state.activeAlarms)) {
+    activeAlarmCache.set(alarmId, alarm)
+  }
+  incidentCounter = state.incidentCounter
+  return true
+}
+
+async function saveSimulationState() {
+  const activeAlarms = Object.fromEntries(activeAlarmCache) as Record<string, Alarm>
+  await SIMULATION_STATE_REF.set({
+    version: 1,
+    activeAlarms,
+    incidentCounter,
+    updatedAt: new Date().toISOString(),
+  } satisfies SimulationState)
+  stateDirty = false
+}
 
 // ---------------------------------------------------------------------------
-// initCaches — efficient startup: 3 Firestore reads total
+// initCaches — efficient startup: 2 Firestore document reads after bootstrap
 // ---------------------------------------------------------------------------
 
 async function initCaches() {
@@ -151,9 +186,19 @@ async function initCaches() {
   allCells = (manifestSnap.data()?.entries ?? []) as CellEntry[]
   console.log(`[simulate] Cell manifest loaded — ${allCells.length} cells`)
 
-  // ── Read 2: active alarms (limit 30) ─────────────────────────────────────
-  // We only need a sample to (a) build the active set for trigger exclusion
-  // and (b) pick candidates for resolve. 30 is enough for realistic simulation.
+  // ── Read 2: compact simulator state (1 doc) ──────────────────────────────
+  // Recurring GitHub Actions runs should use this path. It avoids paying the
+  // active alarm query and incident counter query on every scheduled run.
+  if (await loadSimulationState()) {
+    console.log(`[simulate] Simulation state loaded — ${activeAlarmCache.size} active alarms`)
+    console.log(`[simulate] Incident counter: INC${String(incidentCounter).padStart(7, '0')}\n`)
+    return
+  }
+
+  console.log('[simulate] Simulation state missing — bootstrapping from Firestore queries')
+
+  // Bootstrap only: active alarms (limit 30). The state doc written below is
+  // used by later runs, so this query should not recur unless config is reset.
   const alarmSnap = await db.collection('alarms')
     .where('resolved', '==', false)
     .limit(30)
@@ -164,7 +209,7 @@ async function initCaches() {
   }
   console.log(`[simulate] Active alarm sample loaded — ${activeAlarmCache.size} alarms (sample of 30 max)`)
 
-  // ── Read 3: incident counter (1 doc) ─────────────────────────────────────
+  // Bootstrap only: incident counter (1 doc)
   const incSnap = await db.collection('incidents')
     .orderBy('incidentNumber', 'desc')
     .limit(1)
@@ -173,6 +218,7 @@ async function initCaches() {
     const lastId = incSnap.docs[0].data().incidentNumber as string
     incidentCounter = parseInt(lastId.replace('INC', ''), 10) + 1
   }
+  await saveSimulationState()
   console.log(`[simulate] Incident counter: INC${String(incidentCounter).padStart(7, '0')}\n`)
 }
 
@@ -232,6 +278,7 @@ async function escalateStaleAlarms() {
 
     // Keep cache consistent — alarm now has a linked incident
     activeAlarmCache.set(alarmId, { ...alarm, incidentId })
+    stateDirty = true
 
     console.log(`[simulate] ESCALATE ${alarm.severity.padEnd(8)} — ${alarm.siteId} / ${alarm.technology} — unresolved ${ageMin}m → ${incidentId}`)
   }
@@ -264,12 +311,11 @@ async function triggerAlarm() {
   const pick     = okCells[Math.floor(Math.random() * okCells.length)]
   const severity = pickSeverity()
   const template = pickAlarm(severity)
-  const alarmId  = `${pick.antennaId}-${pick.technology.toLowerCase()}-alarm-active`
+  const alarmId  = alarmIdForCell(pick.antennaId, pick.technology)
   const alarmTime = new Date().toISOString()
 
-  // Use cached topology — reads from Firestore only on first access per antenna per run.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cells: any[] = await getCells(pick.antennaId)
+  // Rebuild the cells array from the simulator state, avoiding topology reads.
+  const cells = buildCells(pick.antennaId)
   if (cells.length === 0) return
 
   // Incident for critical + major only
@@ -326,7 +372,7 @@ async function triggerAlarm() {
 
   await batch.commit()
   activeAlarmCache.set(alarmId, { id: alarmId, ...alarmDoc })
-  topologyCache.set(pick.antennaId, updatedCells)
+  stateDirty = true
 
   console.log(`[simulate] TRIGGER  ${severity.padEnd(8)} — ${pick.siteId} / ${pick.technology} — "${template.text}"`)
 }
@@ -352,11 +398,11 @@ async function resolveAlarm() {
   const cancelTime = new Date().toISOString()
   const durationMs = new Date(cancelTime).getTime() - new Date(alarm.alarmTime).getTime()
 
-  // Use cached topology — no Firestore read if this antenna was touched earlier in the run.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cells: any[] = await getCells(alarm.antennaId)
+  // Rebuild the cells array from the simulator state, avoiding topology reads.
+  const cells = buildCells(alarm.antennaId)
   if (cells.length === 0) {
     activeAlarmCache.delete(alarmId)
+    stateDirty = true
     return
   }
   const updatedCells = cells.map(c =>
@@ -384,7 +430,7 @@ async function resolveAlarm() {
 
   await batch.commit()
   activeAlarmCache.delete(alarmId)
-  topologyCache.set(alarm.antennaId, updatedCells)
+  stateDirty = true
 
   const resolvedInMin = Math.round(durationMs / 60_000)
   console.log(`[simulate] RESOLVE  ${alarm.severity.padEnd(8)} — ${alarm.siteId} / ${alarm.technology} — "${alarm.text}" (${resolvedInMin}m)`)
@@ -410,6 +456,10 @@ async function tick() {
       await triggerAlarm()
     } else {
       await resolveAlarm()
+    }
+
+    if (stateDirty) {
+      await saveSimulationState()
     }
   } catch (err) {
     console.error('[simulate] Tick error:', err)
@@ -451,6 +501,9 @@ async function run() {
     console.log(`[simulate] ${activeAlarmCache.size} active / ${allCells.length} cells — draining to ≤${target}\n`)
     while (activeAlarmCache.size > target) {
       await resolveAlarm()
+    }
+    if (stateDirty) {
+      await saveSimulationState()
     }
     console.log(`[simulate] Drain complete — ${activeAlarmCache.size} active alarms remaining`)
   } else if (ONCE) {

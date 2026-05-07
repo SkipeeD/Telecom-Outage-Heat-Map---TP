@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { SignalHigh, MailCheck } from 'lucide-react'
@@ -33,12 +34,12 @@ export default function VerifyEmailPage() {
     <div className="flex min-h-svh items-center justify-center bg-[var(--bg-base)] p-6 transition-colors duration-300">
       <div className="w-full max-w-sm flex flex-col items-center gap-8">
 
-        <a href="/" className="flex items-center gap-2 text-[var(--text-primary)]">
+        <Link href="/" className="flex items-center gap-2 text-[var(--text-primary)]">
           <div className="flex size-8 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent)] text-white shadow-[var(--shadow-glow)]">
             <SignalHigh className="size-5" />
           </div>
           <span className="font-semibold tracking-[0.2em] uppercase text-[14px]">SIGNALIS</span>
-        </a>
+        </Link>
 
         <div className="w-full bg-[var(--glass-bg)] backdrop-blur-xl border border-[var(--glass-border)] rounded-[var(--radius-lg)] shadow-[var(--shadow-md)] p-8 flex flex-col items-center gap-6 text-center">
 

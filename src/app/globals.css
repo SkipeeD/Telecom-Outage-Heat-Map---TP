@@ -54,6 +54,14 @@
   --tech-2g:  #60a5fa;
   --tech-6g: #f97316;
 
+  /* Weather palette */
+  --wx-sun:   #fbbf24;
+  --wx-rain:  #60a5fa;
+  --wx-storm: #a78bfa;
+  --wx-snow:  #cbd5e1;
+  --wx-fog:   #94a3b8;
+  --wx-wind:  #67e8f9;
+
   /* Semantic */
   --success: #34d399;
   --danger:  #f04f4f;
@@ -223,9 +231,23 @@ html, body {
   }
 }
 
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Fix for Leaflet white grid lines between tiles */
 .leaflet-container {
   background: #1a1a2e !important;
+}
+
+.leaflet-control-attribution {
+  display: none !important;
 }
 
 .leaflet-tile {
@@ -236,3 +258,4 @@ html, body {
   /* Some browsers need this to prevent tiny gaps */
   box-shadow: 0 0 1px transparent;
 }
+

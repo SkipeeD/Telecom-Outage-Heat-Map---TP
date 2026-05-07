@@ -1,4 +1,4 @@
-import { getAdminAuth } from '@/lib/firebase-admin'
+import { getAdminAuth, getAdminDb } from '@/lib/firebase-admin'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
@@ -22,6 +22,17 @@ export async function POST(req: NextRequest) {
     }
 
     await adminAuth.setCustomUserClaims(uid, { role })
+
+    try {
+      await getAdminDb().collection('users').doc(uid).set({ role }, { merge: true })
+    } catch (error) {
+      console.error('Failed to sync Firestore user role:', error)
+      return NextResponse.json({
+        success: true,
+        warning: 'Auth claim was updated, but Firestore profile sync failed.',
+      })
+    }
+
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })

@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
-import { CircleMarker, Tooltip } from 'react-leaflet'
+import { CircleMarker, Tooltip, useMap } from 'react-leaflet'
+import type React from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
+import { cityForAntenna } from '@/lib/weather-cities'
 
 const severityRank: Record<AlarmSeverity, number> = {
   critical: 5,
@@ -13,7 +15,7 @@ const severityRank: Record<AlarmSeverity, number> = {
   ok: 1,
 }
 
-function worstCell(antenna: Antenna): { technology: Technology; status: AlarmSeverity } {
+export function getWorstCell(antenna: Antenna): { technology: Technology; status: AlarmSeverity } {
   if (!antenna.cells || antenna.cells.length === 0) {
     return { technology: '4G', status: 'ok' }
   }
@@ -56,39 +58,82 @@ interface MarkerLayerProps {
     technologies?: Technology[]
     severities?: AlarmSeverity[]
   }
+  weatherRisk?: Record<string, boolean>
   onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
+  markerPathsRef?: React.RefObject<Map<string, SVGElement>>
 }
 
-export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClick }: MarkerLayerProps) {
+export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick, markerPathsRef }: MarkerLayerProps) {
   const { theme } = useTheme()
+  const map = useMap()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
-  // Map from marker id → raw SVG path element captured on Leaflet's `add` event
-  const markerPaths = useRef(new Map<string, SVGElement>())
+  const internalRef = useRef(new Map<string, SVGElement>())
+  const markerPaths = markerPathsRef ?? internalRef
+
+  // Keep refs so zoom handlers can read current values without stale closures
+  const selectedIdRef = useRef(selectedId)
+  const hoveredIdRef  = useRef(hoveredId)
+  useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
+  useEffect(() => { hoveredIdRef.current  = hoveredId  }, [hoveredId])
+
+  // Pure-DOM zoom handlers — no setState, no re-render, no compounding transforms
+  useEffect(() => {
+    const clearTransforms = () => {
+      markerPaths.current.forEach(path => {
+        path.style.transition = 'none'
+        path.style.transform  = 'scale(1)'
+        path.style.filter     = ''
+      })
+    }
+    const restoreTransforms = () => {
+      markerPaths.current.forEach((path, id) => {
+        path.style.transition = 'transform 220ms cubic-bezier(0.34,1.56,0.64,1), filter 220ms ease'
+        if (id === selectedIdRef.current) {
+          path.style.transform = 'scale(1.72)'
+          path.style.filter    = 'drop-shadow(0 0 5px rgba(124,111,247,0.6))'
+        } else if (id === hoveredIdRef.current) {
+          path.style.transform = 'scale(1.45)'
+          path.style.filter    = ''
+        } else {
+          path.style.transform = 'scale(1)'
+          path.style.filter = ''
+        }
+      })
+    }
+    map.on('zoomstart', clearTransforms)
+    map.on('zoomend',   restoreTransforms)
+    return () => {
+      map.off('zoomstart', clearTransforms)
+      map.off('zoomend', restoreTransforms)
+    }
+  }, [map, markerPaths])
 
   const antennaMarkers = useMemo(() => {
     return antennas.map(antenna => {
-      const { technology, status } = worstCell(antenna)
+      const { technology, status } = getWorstCell(antenna)
       const colors = getMarkerColor(technology, status)
-      return { ...antenna, worstTech: technology, worstStatus: status, colors }
+      const city = cityForAntenna(antenna.latitude, antenna.longitude)
+      const isWeatherRisk = !!(weatherRisk?.[city])
+      return { ...antenna, worstTech: technology, worstStatus: status, colors, city, isWeatherRisk }
     })
-  }, [antennas, theme])
+  }, [antennas, weatherRisk])
 
-  // Apply CSS scale transforms whenever hover/selection changes
+  // Apply CSS scale transforms on selection/hover change
   useEffect(() => {
     markerPaths.current.forEach((path, id) => {
       if (id === selectedId) {
         path.style.transform = 'scale(1.72)'
-        path.style.filter = 'drop-shadow(0 0 5px rgba(124,111,247,0.6))'
+        path.style.filter    = 'drop-shadow(0 0 5px rgba(124,111,247,0.6))'
       } else if (id === hoveredId) {
         path.style.transform = 'scale(1.45)'
-        path.style.filter = ''
+        path.style.filter    = ''
       } else {
         path.style.transform = 'scale(1)'
-        path.style.filter = ''
+        path.style.filter    = ''
       }
     })
-  }, [selectedId, hoveredId])
+  }, [selectedId, hoveredId, markerPaths])
 
   return (
     <>
@@ -126,7 +171,10 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClic
                 remove: () => {
                   markerPaths.current.delete(marker.id)
                 },
-                click: (e) => onAntennaClick(marker, e.originalEvent.target as Element),
+                click: () => {
+                  const path = markerPaths.current.get(marker.id)
+                  if (path) onAntennaClick(marker, path)
+                },
                 mouseover: () => setHoveredId(marker.id),
                 mouseout: () => setHoveredId(null),
               }}
@@ -146,7 +194,7 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClic
                   <span className="text-[15px] font-semibold text-[var(--text-primary)] font-sans">
                     {marker.name}
                   </span>
-                  <div className="flex items-center gap-1.5 mt-1.5">
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                     <span
                       className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
                       style={{ backgroundColor: `${fill}2a`, borderColor: `${fill}6a`, color: fill }}
@@ -162,6 +210,18 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, onAntennaClic
                     {extraAlarmCount > 0 && (
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.1)] text-[var(--text-primary)]">
                         +{extraAlarmCount} alarm{extraAlarmCount > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {marker.isWeatherRisk && (
+                      <span
+                        className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
+                        style={{
+                          backgroundColor: '#f9731622',
+                          borderColor: '#f9731666',
+                          color: '#f97316',
+                        }}
+                      >
+                        ⚠ weather
                       </span>
                     )}
                   </div>
