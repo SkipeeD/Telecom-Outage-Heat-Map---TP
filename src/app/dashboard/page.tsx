@@ -148,7 +148,7 @@ export default function DashboardPage() {
     }
 
     void fetchDashboardSummary()
-    const id = window.setInterval(() => void fetchDashboardSummary(), 60 * 1000)
+    const id = window.setInterval(() => void fetchDashboardSummary(), 5 * 60 * 1000)
     return () => {
       cancelled = true
       window.clearInterval(id)
@@ -442,24 +442,28 @@ export default function DashboardPage() {
 
           <motion.div variants={itemVariants}>
             <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
-              <CardHeader>
-                <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest">
+              <CardHeader
+                className="cursor-pointer hover:bg-[var(--glass-hover)] transition-colors group"
+                onClick={() => router.push('/dashboard/distribution?mode=technology')}
+              >
+                <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest flex items-center justify-between">
                   Affected Sites by Technology
+                  <ArrowRight className="size-4 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors" />
                 </CardTitle>
               </CardHeader>
               <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={stats.barData} key={theme} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={getCSSVar('--border')} />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
                       tick={{ fill: getCSSVar('--text-muted'), fontSize: 10, fontFamily: 'var(--font-mono)' }}
                     />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
                       tick={{ fill: getCSSVar('--text-muted'), fontSize: 10, fontFamily: 'var(--font-mono)' }}
                     />
                     <Tooltip
@@ -474,7 +478,16 @@ export default function DashboardPage() {
                       }}
                       itemStyle={{ color: '#ffffff' }}
                     />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    <Bar 
+                      dataKey="value" 
+                      radius={[4, 4, 0, 0]}
+                      className="cursor-pointer outline-none"
+                      onClick={(data) => {
+                        if (data && data.name) {
+                          router.push(`/dashboard/distribution?mode=technology&tech=${data.name}`)
+                        }
+                      }}
+                    >
                       {stats.barData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={getCSSVar(entry.color)} />
                       ))}
@@ -483,8 +496,7 @@ export default function DashboardPage() {
                 </ResponsiveContainer>
               </CardContent>
             </Card>
-          </motion.div>
-        </div>
+          </motion.div>        </div>
 
         {/* Resolution Performance Chart & Export */}
         <motion.div variants={itemVariants}>

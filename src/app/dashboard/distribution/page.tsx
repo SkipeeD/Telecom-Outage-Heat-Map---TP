@@ -5,10 +5,10 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { motion } from 'motion/react'
 import { subscribeToAntennas, subscribeToIncidents } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
-import type { Antenna, AlarmSeverity, Incident } from '@/types'
-import { ArrowLeft, Clock, Users, CheckCircle2, Search } from 'lucide-react'
+import type { Antenna, Alarm, AlarmSeverity, Incident, Technology } from '@/types'
+import { ArrowLeft, Clock, Users, CheckCircle2, Search, MapPin } from 'lucide-react'
 import { SeverityBadge } from '@/components/antenna/SeverityBadge'
-import { relTime, techColorVar, severityPalette } from '@/lib/antenna-helpers'
+import { relTime, techColorVar, severityPalette, TECHS } from '@/lib/antenna-helpers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -24,9 +24,18 @@ const severityRank: Record<AlarmSeverity, number> = {
 }
 
 const FILTERS: (AlarmSeverity | 'ALL')[] = ['ALL', 'critical', 'major', 'minor', 'warning']
+const TECH_FILTERS: (Technology | 'ALL')[] = ['ALL', ...TECHS]
 
 const normalize = (str: string) => 
   str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+
+interface AlarmDisplayItem extends Alarm {
+  antennaName: string
+  antennaId: string
+  latitude: number
+  longitude: number
+  incident?: Incident
+}
 
 function DistributionContent() {
   const searchParams = useSearchParams()
@@ -34,11 +43,14 @@ function DistributionContent() {
   const { user } = useAuth()
   
   const initialSeverity = (searchParams.get('severity') as AlarmSeverity | null) || 'ALL'
+  const initialTech = (searchParams.get('tech') as Technology | null) || 'ALL'
+  const mode = (searchParams.get('mode') as 'severity' | 'technology') || (searchParams.get('tech') ? 'technology' : 'severity')
   
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [search, setSearch] = useState('')
   const [severityFilter, setSeverityFilter] = useState<AlarmSeverity | 'ALL'>(initialSeverity)
+  const [techFilter, setTechFilter] = useState<Technology | 'ALL'>(initialTech)
 
   useEffect(() => {
     if (!user) return
@@ -60,11 +72,15 @@ function DistributionContent() {
           const incident = incidents.find(i =>
             i.alarmId === alarm.id || (alarm.incidentId !== null && i.incidentNumber === alarm.incidentId)
           )
-          return {
+          const item: AlarmDisplayItem = {
             ...alarm,
             antennaName: a.name,
+            antennaId: a.id,
+            latitude: a.latitude,
+            longitude: a.longitude,
             incident
           }
+          return item
         })
     )
 
@@ -72,11 +88,12 @@ function DistributionContent() {
     const normalizedSearch = normalize(search)
     const filtered = allActive.filter(item => {
       const matchesSeverity = severityFilter === 'ALL' || item.severity === severityFilter
+      const matchesTech = techFilter === 'ALL' || item.technology === techFilter
       const matchesSearch = !search || 
         normalize(item.antennaName).includes(normalizedSearch) ||
         normalize(item.siteId).includes(normalizedSearch)
       
-      return matchesSeverity && matchesSearch
+      return matchesSeverity && matchesTech && matchesSearch
     })
 
     // 3. Sort logic
@@ -88,7 +105,11 @@ function DistributionContent() {
       // Tertiary sort: time (newest first)
       return new Date(b.alarmTime).getTime() - new Date(a.alarmTime).getTime()
     })
-  }, [antennas, incidents, severityFilter, search])
+  }, [antennas, incidents, severityFilter, techFilter, search])
+
+  const handleGoToMap = (item: AlarmDisplayItem) => {
+    router.push(`/map?selectSite=${item.antennaId}&lat=${item.latitude}&lon=${item.longitude}`)
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -104,9 +125,15 @@ function DistributionContent() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-              {severityFilter !== 'ALL' 
-                ? `${severityFilter.charAt(0).toUpperCase() + severityFilter.slice(1)} Alarms Detail` 
-                : 'Alarm Severity Distribution'}
+              {mode === 'technology' ? (
+                techFilter !== 'ALL'
+                  ? `${techFilter} Technology Alarms Detail`
+                  : 'Site Technology Distribution'
+              ) : (
+                severityFilter !== 'ALL' 
+                  ? `${severityFilter.charAt(0).toUpperCase() + severityFilter.slice(1)} Alarms Detail` 
+                  : 'Alarm Severity Distribution'
+              )}
             </h1>
             <p className="text-sm text-[var(--text-muted)] font-mono uppercase tracking-tighter">
               Showing {items.length} Active {items.length === 1 ? 'Incident' : 'Incidents'}
@@ -126,29 +153,55 @@ function DistributionContent() {
           </div>
           
           <div className="flex gap-1.5 p-1 bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] shrink-0 overflow-x-auto no-scrollbar">
-            {FILTERS.map(f => {
-              const isActive = severityFilter === f
-              const palette = f !== 'ALL' ? severityPalette[f] : null
-              
-              return (
-                <button
-                  key={f}
-                  onClick={() => setSeverityFilter(f)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-[var(--radius-md)] text-[11px] font-medium uppercase tracking-widest transition-all duration-200 shrink-0",
-                    isActive 
-                      ? "text-white shadow-[var(--shadow-glow)]" 
-                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)]"
-                  )}
-                  style={isActive ? {
-                    backgroundColor: palette ? palette.text : 'var(--accent)',
-                    boxShadow: palette ? `0 0 14px ${palette.text}44` : '0 0 14px var(--accent)44'
-                  } : {}}
-                >
-                  {f}
-                </button>
-              )
-            })}
+            {mode === 'technology' ? (
+              TECH_FILTERS.map(f => {
+                const isActive = techFilter === f
+                const techColor = f !== 'ALL' ? `var(${techColorVar[f]})` : null
+                
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setTechFilter(f)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-[var(--radius-md)] text-[11px] font-medium uppercase tracking-widest transition-all duration-200 shrink-0",
+                      isActive 
+                        ? "text-white shadow-[var(--shadow-glow)]" 
+                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)]"
+                    )}
+                    style={isActive ? {
+                      backgroundColor: techColor || 'var(--accent)',
+                      boxShadow: techColor ? `0 0 14px ${techColor}44` : '0 0 14px var(--accent)44'
+                    } : {}}
+                  >
+                    {f}
+                  </button>
+                )
+              })
+            ) : (
+              FILTERS.map(f => {
+                const isActive = severityFilter === f
+                const palette = f !== 'ALL' ? severityPalette[f] : null
+                
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setSeverityFilter(f)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-[var(--radius-md)] text-[11px] font-medium uppercase tracking-widest transition-all duration-200 shrink-0",
+                      isActive 
+                        ? "text-white shadow-[var(--shadow-glow)]" 
+                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)]"
+                    )}
+                    style={isActive ? {
+                      backgroundColor: palette ? palette.text : 'var(--accent)',
+                      boxShadow: palette ? `0 0 14px ${palette.text}44` : '0 0 14px var(--accent)44'
+                    } : {}}
+                  >
+                    {f}
+                  </button>
+                )
+              })
+            )}
           </div>
         </div>
       </header>
@@ -160,7 +213,7 @@ function DistributionContent() {
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: Math.min(idx * 0.05, 0.4), duration: 0.35, ease: EASE }}
-            className="bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden shadow-sm hover:shadow-md transition-all group"
+            className="bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden shadow-sm hover:shadow-md transition-all group relative"
           >
             <div className="p-5 flex flex-col md:flex-row md:items-center gap-6">
               {/* Left: Alarm Info */}
@@ -191,8 +244,18 @@ function DistributionContent() {
                 </div>
               </div>
 
-              {/* Right: Incident Info (if exists) */}
-              <div className="md:w-72 shrink-0">
+              {/* Right: Actions and Incident Info */}
+              <div className="md:w-72 shrink-0 flex flex-col gap-3">
+                <Button
+                  onClick={() => handleGoToMap(item)}
+                  variant="ghost"
+                  size="sm"
+                  className="w-full bg-white/5 hover:bg-[var(--accent)] hover:text-white transition-all text-[10px] uppercase tracking-widest font-mono h-8 border-none"
+                >
+                  <MapPin className="size-3 mr-2" />
+                  Go to Map
+                </Button>
+
                 {item.incident ? (
                   <div className="bg-black/20 rounded-[var(--radius-md)] p-3 border border-[var(--glass-border)] space-y-2 group-hover:border-[var(--accent)]/30 transition-colors">
                     <div className="flex items-center justify-between">
