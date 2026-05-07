@@ -10,6 +10,7 @@ import { WeatherOverlayToggle } from './WeatherOverlayToggle'
 import { WeatherOverlay } from './WeatherOverlay'
 import { useWeatherOverlay } from '@/hooks/useWeatherOverlay'
 import type { CityWeatherDetail } from '@/app/api/weather/route'
+import { useSearchParams } from 'next/navigation'
 
 function ResizeHandler() {
   const map = useMap()
@@ -87,6 +88,22 @@ export default function MapClient({ antennas, selectedId, focusAntennaId, active
     }
   }, [])
 
+  useEffect(() => {
+    if (hasInitialSelectedRef.current || antennas.length === 0) return
+
+    const siteId = searchParams.get('selectSite')
+    const lat = searchParams.get('lat')
+    const lon = searchParams.get('lon')
+
+    if (siteId && lat && lon) {
+      const antenna = antennas.find(a => a.id === siteId)
+      if (antenna) {
+        hasInitialSelectedRef.current = true
+        handleSearchSelect(antenna)
+      }
+    }
+  }, [antennas, searchParams])
+
   function handleSearchSelect(antenna: Antenna) {
     setFlyTarget({ lat: antenna.latitude, lon: antenna.longitude })
     if (searchOpenTimerRef.current) clearTimeout(searchOpenTimerRef.current)
@@ -135,5 +152,13 @@ export default function MapClient({ antennas, selectedId, focusAntennaId, active
 
       <WeatherOverlayToggle enabled={weatherOverlayOn} onToggle={toggleWeatherOverlay} />
     </div>
+  )
+}
+
+export default function MapClient(props: MapClientProps) {
+  return (
+    <Suspense fallback={null}>
+      <MapClientContent {...props} />
+    </Suspense>
   )
 }
