@@ -148,7 +148,7 @@ export default function DashboardPage() {
     }
 
     void fetchDashboardSummary()
-    const id = window.setInterval(() => void fetchDashboardSummary(), 60 * 1000)
+    const id = window.setInterval(() => void fetchDashboardSummary(), 5 * 60 * 1000)
     return () => {
       cancelled = true
       window.clearInterval(id)

@@ -8,34 +8,70 @@ const INCIDENT_LIST_LIMIT = 100
 const RESOLVED_ALARM_LIMIT = 100
 const LONG_LIVED_ALARM_LIMIT = 20
 const LONG_LIVED_THRESHOLD_MS = 24 * 60 * 60_000
-const DASHBOARD_SUMMARY_REVALIDATE_SECONDS = 60
+const DASHBOARD_SUMMARY_REVALIDATE_SECONDS = 5 * 60
+
+export const runtime = 'nodejs'
+
+async function readQuery<T>(
+  label: string,
+  queryPromise: Promise<FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>>,
+  mapDoc: (doc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>) => T
+): Promise<T[]> {
+  try {
+    const snapshot = await queryPromise
+    return snapshot.docs.map(mapDoc)
+  } catch (error) {
+    console.error(`[/api/dashboard/summary] ${label} query failed`, error)
+    return []
+  }
+}
+
+function isAdminCredentialError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('Could not load the default credentials') ||
+    message.includes('GOOGLE_APPLICATION_CREDENTIALS') ||
+    message.includes('Failed to parse private key') ||
+    message.includes('service account')
+}
 
 const getCachedDashboardSummary = unstable_cache(
   async (): Promise<DashboardSummary> => {
     const db = getAdminDb()
 
-    const [resolvedSnap, longLivedSnap, incidentsSnap] = await Promise.all([
-      db.collection('alarms')
-        .where('resolved', '==', true)
-        .orderBy('cancelTime', 'desc')
-        .limit(RESOLVED_ALARM_LIMIT)
-        .get(),
-      db.collection('alarms')
-        .where('resolved', '==', true)
-        .where('durationMs', '>=', LONG_LIVED_THRESHOLD_MS)
-        .orderBy('durationMs', 'desc')
-        .limit(LONG_LIVED_ALARM_LIMIT)
-        .get(),
-      db.collection('incidents')
-        .orderBy('submitDate', 'desc')
-        .limit(INCIDENT_LIST_LIMIT)
-        .get(),
+    const [resolvedAlarms, longLivedAlarms, incidents] = await Promise.all([
+      readQuery(
+        'resolved alarms',
+        db.collection('alarms')
+          .where('resolved', '==', true)
+          .orderBy('cancelTime', 'desc')
+          .limit(RESOLVED_ALARM_LIMIT)
+          .get(),
+        doc => ({ id: doc.id, ...doc.data() } as Alarm)
+      ),
+      readQuery(
+        'long-lived alarms',
+        db.collection('alarms')
+          .where('resolved', '==', true)
+          .where('durationMs', '>=', LONG_LIVED_THRESHOLD_MS)
+          .orderBy('durationMs', 'desc')
+          .limit(LONG_LIVED_ALARM_LIMIT)
+          .get(),
+        doc => ({ id: doc.id, ...doc.data() } as Alarm)
+      ),
+      readQuery(
+        'incidents',
+        db.collection('incidents')
+          .orderBy('submitDate', 'desc')
+          .limit(INCIDENT_LIST_LIMIT)
+          .get(),
+        doc => doc.data() as Incident
+      ),
     ])
 
     return {
-      resolvedAlarms: resolvedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Alarm)),
-      longLivedAlarms: longLivedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Alarm)),
-      incidents: incidentsSnap.docs.map(doc => doc.data() as Incident),
+      resolvedAlarms,
+      longLivedAlarms,
+      incidents,
       updatedAt: new Date().toISOString(),
     }
   },
@@ -53,7 +89,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    await getAdminAuth().verifyIdToken(authHeader.slice(7))
+    try {
+      await getAdminAuth().verifyIdToken(authHeader.slice(7))
+    } catch (error) {
+      if (isAdminCredentialError(error)) {
+        console.error('[/api/dashboard/summary] admin credentials unavailable', error)
+        return NextResponse.json({ error: 'Firebase Admin credentials unavailable' }, { status: 503 })
+      }
+
+      console.error('[/api/dashboard/summary] token verification failed', error)
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     const summary = await getCachedDashboardSummary()
     return NextResponse.json(summary)
