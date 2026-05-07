@@ -13,7 +13,7 @@ import {
 } from '@/lib/antenna-helpers'
 import { SeverityBadge } from './SeverityBadge'
 import { Button } from '@/components/ui/button'
-import { acknowledgeAssignedIncidents, createIncidentForAlarm, getAlarmsForAntennaCell, getIncidentsForCell, updateIncidentAssignees } from '@/lib/firestore'
+import { acknowledgeAssignedIncidents, createIncidentForAlarm, getAlarmsForAntennaCell, getIncidentsForSite, updateIncidentAssignees } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { canAssignEngineers, canCreateIncident } from '@/lib/roles'
 import { AssignEngineersModal } from '@/components/admin/AssignEngineersModal'
@@ -45,6 +45,7 @@ const INC_PRIO_COLOR: Record<string, string> = {
 
 interface Props {
   antenna: Antenna
+  allAntennas?: Antenna[]
   initialTech: Technology
   open: boolean
   onClose: () => void
@@ -54,7 +55,7 @@ type Tab = 'overview' | 'alarms' | 'incidents'
 type SevFilter = 'ALL' | AlarmSeverity
 type IncFilter = 'ALL' | 'MINE' | 'IN PROGRESS' | 'ASSIGNED' | 'RESOLVED' | 'CLOSED'
 
-export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Props) {
+export function AntennaDetailsPanel({ antenna, allAntennas, initialTech, open, onClose }: Props) {
   const shouldReduce = useReducedMotion()
   const { profile } = useAuth()
   const canInc    = canCreateIncident(profile?.role)
@@ -95,7 +96,7 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
 
       const [alarms, incs] = await Promise.all([
         getAlarmsForAntennaCell(antenna.id, activeTech).catch(() => null),
-        getIncidentsForCell(antenna.id, activeTech).catch(() => null),
+        getIncidentsForSite(antenna.siteId).catch(() => null),
       ])
 
       if (cancelled) return
@@ -106,7 +107,7 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
     })()
 
     return () => { cancelled = true }
-  }, [open, activeTech, antenna.id])
+  }, [open, activeTech, antenna.id, antenna.siteId])
 
   useEffect(() => {
     if (!open) return
@@ -147,10 +148,9 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
     if (!alarm || creatingIncident || incidentCreated) return
     setCreatingIncident(true)
     try {
-      const id = await createIncidentForAlarm(alarm)
+      const id = await createIncidentForAlarm(alarm, antenna, allAntennas)
       setIncidentCreated(id)
-      // Refresh incidents list
-      const updated = await getIncidentsForCell(antenna.id, activeTech)
+      const updated = await getIncidentsForSite(antenna.siteId)
       setIncidents(updated)
     } finally {
       setCreatingIncident(false)
@@ -175,7 +175,7 @@ export function AntennaDetailsPanel({ antenna, initialTech, open, onClose }: Pro
 
   async function handleUpdateAssignees(incidentNumber: string, assignees: IncidentAssignee[]) {
     await updateIncidentAssignees(incidentNumber, assignees)
-    const updated = await getIncidentsForCell(antenna.id, activeTech)
+    const updated = await getIncidentsForSite(antenna.siteId)
     setIncidents(updated)
   }
 
@@ -806,6 +806,15 @@ function IncidentsTab({
                     <p className="text-[13px] text-[var(--text-secondary)] mb-2 leading-snug">
                       {inc.impact}
                     </p>
+
+                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                      {(inc.siteIds?.length ? inc.siteIds : [inc.siteId]).map(s => (
+                        <span key={s} className="font-mono text-[9px] text-[var(--text-muted)] px-1.5 py-0.5 rounded-[var(--radius-full)] border border-[var(--glass-border)] bg-black/10">{s}</span>
+                      ))}
+                      {(inc.technologies?.length ? inc.technologies : [inc.technology]).map(t => (
+                        <span key={t} className="font-mono text-[9px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-full)]" style={{ color: 'var(--accent-bright)', background: 'var(--accent-dim)', border: '1px solid var(--border-accent)' }}>{t}</span>
+                      ))}
+                    </div>
 
                     <div className="flex items-center gap-3 text-[11px] font-mono">
                       <span className="text-[var(--text-muted)]">{relTime(inc.submitDate)}</span>

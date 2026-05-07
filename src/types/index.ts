@@ -41,10 +41,16 @@ export interface IncidentAssignee {
 export interface Incident {
   incidentNumber: string          // INC0000001 format
   submitDate: string
+  // Primary/legacy fields — always set; used by existing Firestore queries
   alarmId: string
   antennaId: string
   technology: Technology
   siteId: string
+  // Multi-site fields — populated for all new incidents; primary site/antenna first
+  siteIds: string[]
+  antennaIds: string[]
+  alarmIds: string[]
+  technologies: Technology[]
   status: 'ASSIGNED' | 'IN PROGRESS' | 'RESOLVED' | 'CLOSED'
   urgency: '1-Critical' | '2-High' | '3-Medium' | '4-Low'
   impact: string
@@ -71,6 +77,14 @@ export interface UserProfile {
   displayName?: string
   role: 'user' | 'engineer' | 'admin'
   createdAt: string
+}
+
+export interface ChatMessage {
+  id: string
+  text: string
+  senderId: string
+  senderName: string
+  timestamp: string
 }
 
 export interface DashboardSummary {

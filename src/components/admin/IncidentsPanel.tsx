@@ -19,8 +19,19 @@ const INC_STATUS_COLOR: Record<string, string> = {
 const INC_PRIO_COLOR: Record<string, string> = {
   '1-Critical': 'var(--alarm-critical)',
   '2-High':     'var(--alarm-major)',
-  '3-Medium':   'var(--alarm-warning)',
-  '4-Low':      'var(--text-secondary)',
+  '3-Medium':   'var(--alarm-minor)',
+  '4-Low':      'var(--alarm-warning)',
+}
+
+const INC_PRIO_LABEL: Record<string, string> = {
+  '1-Critical': 'Critical',
+  '2-High':     'Major',
+  '3-Medium':   'Minor',
+  '4-Low':      'Warning',
+}
+
+function formatPriority(p: string): string {
+  return INC_PRIO_LABEL[p] ?? p
 }
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
@@ -229,13 +240,18 @@ export function IncidentsPanel() {
                             <span className="font-mono text-[12px] font-bold text-[var(--text-primary)]">
                               {inc.incidentNumber}
                             </span>
-                            <span className="font-mono text-[10px] text-[var(--text-muted)]">{inc.siteId}</span>
-                            <span
-                              className="font-mono text-[9px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-full)]"
-                              style={{ color: 'var(--accent-bright)', background: 'var(--accent-dim)', border: '1px solid var(--border-accent)' }}
-                            >
-                              {inc.technology}
-                            </span>
+                            {(inc.siteIds?.length ? inc.siteIds : [inc.siteId]).map(s => (
+                              <span key={s} className="font-mono text-[10px] text-[var(--text-muted)]">{s}</span>
+                            ))}
+                            {(inc.technologies?.length ? inc.technologies : [inc.technology]).map(t => (
+                              <span
+                                key={t}
+                                className="font-mono text-[9px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-full)]"
+                                style={{ color: 'var(--accent-bright)', background: 'var(--accent-dim)', border: '1px solid var(--border-accent)' }}
+                              >
+                                {t}
+                              </span>
+                            ))}
                             <span
                               className="font-mono text-[9px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-full)]"
                               style={{
@@ -249,12 +265,13 @@ export function IncidentsPanel() {
                             <span
                               className="font-mono text-[9px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-full)]"
                               style={{
-                                color:       priorityColor,
-                                background:  `color-mix(in srgb, ${priorityColor} 10%, transparent)`,
-                                border:      `1px solid color-mix(in srgb, ${priorityColor} 22%, transparent)`,
+                                background: priorityColor,
+                                color:      'white',
+                                border:     '1px solid transparent',
+                                boxShadow:  `0 0 6px color-mix(in srgb, ${priorityColor} 55%, transparent)`,
                               }}
                             >
-                              {inc.priority}
+                              {formatPriority(inc.priority)}
                             </span>
                           </div>
 

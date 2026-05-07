@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
@@ -32,9 +32,37 @@ function FlyController({ target }: { target: FlyTarget | null }) {
   return null
 }
 
+interface FocusControllerProps {
+  antenna: Antenna | null
+  markerPathsRef: RefObject<Map<string, SVGElement>>
+  searchOpenTimerRef: RefObject<ReturnType<typeof setTimeout> | null>
+  onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
+}
+
+function FocusController({ antenna, markerPathsRef, searchOpenTimerRef, onAntennaClick }: FocusControllerProps) {
+  const map = useMap()
+  const focusedIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!antenna || antenna.id === focusedIdRef.current) return
+
+    focusedIdRef.current = antenna.id
+    map.flyTo([antenna.latitude, antenna.longitude], 14, { duration: 1.4 })
+
+    if (searchOpenTimerRef.current) clearTimeout(searchOpenTimerRef.current)
+    searchOpenTimerRef.current = setTimeout(() => {
+      const el = markerPathsRef.current.get(antenna.id)
+      if (el) onAntennaClick(antenna, el)
+    }, 1600)
+  }, [antenna, map, markerPathsRef, searchOpenTimerRef, onAntennaClick])
+
+  return null
+}
+
 interface MapClientProps {
   antennas: Antenna[]
   selectedId?: string | null
+  focusAntennaId?: string | null
   activeFilters?: {
     technologies?: Technology[]
     severities?: AlarmSeverity[]
@@ -44,11 +72,14 @@ interface MapClientProps {
   onAntennaClick: (antenna: Antenna, anchorEl: Element) => void
 }
 
-export default function MapClient({ antennas, selectedId, activeFilters, weatherRisk, weatherDetails, onAntennaClick }: MapClientProps) {
+export default function MapClient({ antennas, selectedId, focusAntennaId, activeFilters, weatherRisk, weatherDetails, onAntennaClick }: MapClientProps) {
   const { enabled: weatherOverlayOn, toggle: toggleWeatherOverlay } = useWeatherOverlay()
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null)
   const markerPathsRef = useRef(new Map<string, SVGElement>())
   const searchOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const focusAntenna = focusAntennaId
+    ? antennas.find(a => a.id === focusAntennaId) ?? null
+    : null
 
   useEffect(() => {
     return () => {
@@ -59,7 +90,6 @@ export default function MapClient({ antennas, selectedId, activeFilters, weather
   function handleSearchSelect(antenna: Antenna) {
     setFlyTarget({ lat: antenna.latitude, lon: antenna.longitude })
     if (searchOpenTimerRef.current) clearTimeout(searchOpenTimerRef.current)
-    // flyTo duration is 1.4s — wait for it to finish then open popup
     searchOpenTimerRef.current = setTimeout(() => {
       const el = markerPathsRef.current.get(antenna.id)
       if (el) onAntennaClick(antenna, el)
@@ -91,6 +121,12 @@ export default function MapClient({ antennas, selectedId, activeFilters, weather
           markerPathsRef={markerPathsRef}
         />
         <FlyController target={flyTarget} />
+        <FocusController
+          antenna={focusAntenna}
+          markerPathsRef={markerPathsRef}
+          searchOpenTimerRef={searchOpenTimerRef}
+          onAntennaClick={onAntennaClick}
+        />
         <ResizeHandler />
         <WeatherOverlay enabled={weatherOverlayOn} details={weatherDetails ?? []} />
       </MapContainer>

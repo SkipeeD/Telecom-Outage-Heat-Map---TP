@@ -1,0 +1,65 @@
+import { getAdminAuth, getAdminDb } from '@/lib/firebase-admin'
+import type { Incident, UserProfile } from '@/types'
+import { NextRequest, NextResponse } from 'next/server'
+
+type Action = 'resolve' | 'close'
+type Role = UserProfile['role']
+
+function isValidAction(v: unknown): v is Action {
+  return v === 'resolve' || v === 'close'
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const adminAuth = getAdminAuth()
+    const db = getAdminDb()
+    const caller = await adminAuth.verifyIdToken(authHeader.slice(7))
+
+    const role = caller.role as Role | undefined
+    if (role !== 'engineer' && role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const { incidentNumber, action } = await req.json()
+
+    if (typeof incidentNumber !== 'string' || !incidentNumber.startsWith('INC')) {
+      return NextResponse.json({ error: 'Invalid incidentNumber' }, { status: 400 })
+    }
+    if (!isValidAction(action)) {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+    }
+
+    const ref = db.collection('incidents').doc(incidentNumber)
+    const snap = await ref.get()
+    if (!snap.exists) {
+      return NextResponse.json({ error: 'Incident not found' }, { status: 404 })
+    }
+
+    const incident = snap.data() as Incident
+    const assignedToCaller = (incident.assignees ?? []).some(a => a.uid === caller.uid)
+    if (role !== 'admin' && !assignedToCaller) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (action === 'resolve') {
+      if (incident.status !== 'IN PROGRESS') {
+        return NextResponse.json({ error: 'Incident must be IN PROGRESS to resolve' }, { status: 409 })
+      }
+      await ref.update({ status: 'RESOLVED', resolvedDate: new Date().toISOString(), closedDate: null })
+    } else {
+      if (incident.status !== 'RESOLVED') {
+        return NextResponse.json({ error: 'Incident must be RESOLVED to close' }, { status: 409 })
+      }
+      await ref.update({ status: 'CLOSED', closedDate: new Date().toISOString() })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch {
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+  }
+}
