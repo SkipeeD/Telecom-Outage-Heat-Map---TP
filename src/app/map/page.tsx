@@ -44,7 +44,7 @@ function MapPageInner() {
   const { user, loading: authLoading } = useAuth()
   const { selectedSeverity, setCounts } = useFilters()
   const searchParams = useSearchParams()
-  const focusAntennaId = searchParams.get('antennaId')
+  const focusAntennaId = searchParams.get('antennaId') ?? searchParams.get('selectSite')
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [popupAntenna, setPopupAntenna] = useState<Antenna | null>(null)
