@@ -63,8 +63,11 @@ service cloud.firestore {
       allow create: if request.auth != null &&
         request.auth.uid == userId &&
         request.resource.data.role == 'user';
-      allow update: if isAdmin() &&
-        request.resource.data.role in ['user', 'engineer'];
+      allow update: if
+        (request.auth != null &&
+         request.auth.uid == userId &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']))
+        || (isAdmin() && request.resource.data.role in ['user', 'engineer']);
       allow delete: if false;
     }
   }

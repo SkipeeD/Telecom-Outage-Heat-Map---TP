@@ -20,6 +20,7 @@ export function NameEntryDialog() {
   const { user, profile, setProfile } = useAuth()
   const [name, setName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
   const [show, setShow] = useState(false)
   const pathname = usePathname()
 
@@ -49,19 +50,20 @@ export function NameEntryDialog() {
     if (!trimmedName || !user) return
 
     setIsSubmitting(true)
+    setError('')
     try {
       const profileRef = doc(db, 'users', user.uid)
       await updateDoc(profileRef, {
         displayName: trimmedName
       })
-      
-      // Update local context immediately to close the modal
+
       if (profile) {
         setProfile({ ...profile, displayName: trimmedName })
       }
       setShow(false)
-    } catch (error) {
-      console.error('Error updating name:', error)
+    } catch (err) {
+      console.error('Error updating name:', err)
+      setError('Could not save your name. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -97,9 +99,12 @@ export function NameEntryDialog() {
             autoFocus
             required
           />
+          {error && (
+            <p className="text-[12px] text-[var(--alarm-critical)]">{error}</p>
+          )}
           <motion.div whileTap={{ scale: 0.98 }}>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={isSubmitting || !name.trim()}
               className="w-full bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white font-medium"
             >
