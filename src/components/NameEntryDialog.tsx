@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useAuth } from './AuthProvider'
 import { db } from '@/lib/firebase'
 import { doc, updateDoc } from 'firebase/firestore'
@@ -21,28 +21,19 @@ export function NameEntryDialog() {
   const [name, setName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [show, setShow] = useState(false)
   const pathname = usePathname()
 
-  // 1. Determine if the user should see the dialog
   const isVerified = useMemo(() => {
     return user?.emailVerified || (user && user.providerData.some(p => p.providerId === 'google.com'))
   }, [user])
 
   const shouldShow = !!(
-    user && 
-    isVerified && 
-    profile && 
-    !profile.displayName && 
+    user &&
+    isVerified &&
+    profile &&
+    !profile.displayName &&
     !['/login', '/register', '/verify-email'].includes(pathname)
   )
-
-  // 2. Control showing with a slight delay to allow redirects to settle
-  useEffect(() => {
-    const timeoutId = setTimeout(() => setShow(shouldShow), shouldShow ? 500 : 0)
-
-    return () => clearTimeout(timeoutId)
-  }, [shouldShow])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,7 +51,6 @@ export function NameEntryDialog() {
       if (profile) {
         setProfile({ ...profile, displayName: trimmedName })
       }
-      setShow(false)
     } catch (err) {
       console.error('Error updating name:', err)
       setError('Could not save your name. Please try again.')
@@ -69,15 +59,10 @@ export function NameEntryDialog() {
     }
   }
 
-  // If we shouldn't show, render nothing to avoid any flash
-  if (!shouldShow && !show) return null
+  if (!shouldShow) return null
 
   return (
-    <Dialog open={show} onOpenChange={(open) => {
-      // Never allow the user to close it manually if it should be shown
-      if (shouldShow) setShow(true)
-      else setShow(open)
-    }}>
+    <Dialog open={true} onOpenChange={() => {}}>
       <DialogContent 
         className="sm:max-w-[425px] bg-[var(--bg-overlay)] border-[var(--glass-border)] backdrop-blur-2xl"
         showCloseButton={false}
