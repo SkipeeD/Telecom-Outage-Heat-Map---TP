@@ -4,7 +4,8 @@ import { resolve } from 'path'
 config({ path: resolve(process.cwd(), '.env.local') })
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
+import { FieldValue, getFirestore } from 'firebase-admin/firestore'
+import type { DocumentData, WriteBatch } from 'firebase-admin/firestore'
 import type { Technology, AlarmSeverity, Alarm, Cell } from '../src/types'
 
 if (getApps().length === 0) {
@@ -45,6 +46,9 @@ const ESCALATION_THRESHOLD_MS: Partial<Record<AlarmSeverity, number>> = {
   minor:   15 * 60_000,  // 15 min real-wall-clock time
   warning: 30 * 60_000,  // 30 min
 }
+
+const SITE_MERGE_RADIUS_M = 500
+const OPEN_INCIDENT_STATUSES = new Set(['ASSIGNED', 'IN PROGRESS'])
 
 // ---------------------------------------------------------------------------
 // Alarm catalogue
@@ -108,13 +112,28 @@ function toUrgency(severity: AlarmSeverity): string {
   }
 }
 
+function priorityRank(priority: string): number {
+  switch (priority) {
+    case '1-Critical': return 1
+    case '2-High':     return 2
+    case '3-Medium':   return 3
+    default:           return 4
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // In-memory state — loaded once from Firestore at startup
 // ---------------------------------------------------------------------------
 
 // Full cell list from config/cells manifest (1 read at startup)
-interface CellEntry { antennaId: string; siteId: string; technology: Technology }
+interface CellEntry {
+  antennaId: string
+  siteId: string
+  technology: Technology
+  latitude?: number
+  longitude?: number
+}
 let allCells: CellEntry[] = []
 
 // Active alarm cache (loaded with limit at startup, updated in memory)
@@ -144,6 +163,120 @@ function buildCells(antennaId: string): Cell[] {
         ? { technology, status: alarm.severity, currentAlarm: alarm }
         : { technology, status: 'ok' }
     })
+}
+
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6_371_000
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function siteScopeFor(antennaId: string, siteId: string): { siteIds: string[]; antennaIds: string[] } {
+  const primary = allCells.find(c => c.antennaId === antennaId)
+  const siteIds = new Set<string>([siteId])
+  const antennaIds = new Set<string>([antennaId])
+
+  if (primary?.latitude === undefined || primary.longitude === undefined) {
+    return { siteIds: [...siteIds], antennaIds: [...antennaIds] }
+  }
+
+  for (const entry of allCells) {
+    if (entry.latitude === undefined || entry.longitude === undefined) continue
+    const dist = haversineM(primary.latitude, primary.longitude, entry.latitude, entry.longitude)
+    if (dist <= SITE_MERGE_RADIUS_M) {
+      siteIds.add(entry.siteId)
+      antennaIds.add(entry.antennaId)
+    }
+  }
+
+  return { siteIds: [...siteIds], antennaIds: [...antennaIds] }
+}
+
+async function findOpenIncidentForSites(siteIds: string[]) {
+  const seen = new Set<string>()
+  const incidents: Array<{ id: string; data: DocumentData }> = []
+
+  for (const siteId of siteIds) {
+    const [bySiteIds, byLegacySite] = await Promise.all([
+      db.collection('incidents').where('siteIds', 'array-contains', siteId).limit(20).get(),
+      db.collection('incidents').where('siteId', '==', siteId).limit(20).get(),
+    ])
+
+    for (const doc of [...bySiteIds.docs, ...byLegacySite.docs]) {
+      if (seen.has(doc.id)) continue
+      seen.add(doc.id)
+      const data = doc.data()
+      if (OPEN_INCIDENT_STATUSES.has(data.status)) {
+        incidents.push({ id: doc.id, data })
+      }
+    }
+  }
+
+  return incidents.sort((a, b) =>
+    new Date(a.data.submitDate).getTime() - new Date(b.data.submitDate).getTime()
+  )[0] ?? null
+}
+
+async function prepareIncidentForAlarm(
+  batch: WriteBatch,
+  alarmId: string,
+  alarm: Omit<Alarm, 'id'>,
+  submitDate: string,
+  status: 'ASSIGNED' | 'IN PROGRESS'
+): Promise<string> {
+  const scope = siteScopeFor(alarm.antennaId, alarm.siteId)
+  const existing = await findOpenIncidentForSites(scope.siteIds)
+
+  if (existing) {
+    const urgency = toUrgency(alarm.severity)
+    const existingPriority = typeof existing.data.priority === 'string'
+      ? existing.data.priority
+      : typeof existing.data.urgency === 'string'
+        ? existing.data.urgency
+        : '4-Low'
+    const shouldEscalate = priorityRank(urgency) < priorityRank(existingPriority)
+    batch.update(db.collection('incidents').doc(existing.id), {
+      siteIds:      FieldValue.arrayUnion(...scope.siteIds),
+      antennaIds:   FieldValue.arrayUnion(...scope.antennaIds),
+      alarmIds:     FieldValue.arrayUnion(alarmId),
+      technologies: FieldValue.arrayUnion(alarm.technology),
+      ...(shouldEscalate ? {
+        urgency,
+        priority: urgency,
+        impact: alarm.severity === 'critical' ? '2-Significant/Large' : alarm.severity === 'minor' ? '3-Moderate/Limited' : '4-Minor/Localized',
+      } : {}),
+    })
+    writesThisRun++
+    return existing.id
+  }
+
+  const incidentId = nextIncidentId()
+  batch.set(db.collection('incidents').doc(incidentId), {
+    incidentNumber: incidentId,
+    submitDate,
+    alarmId,
+    antennaId:    alarm.antennaId,
+    technology:   alarm.technology,
+    siteId:       alarm.siteId,
+    siteIds:      scope.siteIds,
+    antennaIds:   scope.antennaIds,
+    alarmIds:     [alarmId],
+    technologies: [alarm.technology],
+    status,
+    urgency:      toUrgency(alarm.severity),
+    impact:       alarm.severity === 'critical' ? '2-Significant/Large' : alarm.severity === 'minor' ? '3-Moderate/Limited' : '4-Minor/Localized',
+    priority:     toUrgency(alarm.severity),
+    closedDate:   null,
+    assignee:     '',
+    assignees:    [],
+    resolvedDate: null,
+  })
+  writesThisRun++
+  return incidentId
 }
 
 async function loadSimulationState(): Promise<boolean> {
@@ -250,29 +383,13 @@ async function escalateStaleAlarms() {
       break
     }
 
-    const incidentId = nextIncidentId()
     const submitDate = new Date().toISOString()
     const ageMin     = Math.round(ageMs / 60_000)
 
     const batch = db.batch()
-    batch.set(db.collection('incidents').doc(incidentId), {
-      incidentNumber: incidentId,
-      submitDate,
-      alarmId,
-      antennaId:   alarm.antennaId,
-      technology:  alarm.technology,
-      siteId:      alarm.siteId,
-      status:      'ASSIGNED',
-      urgency:     toUrgency(alarm.severity),
-      impact:      alarm.severity === 'minor' ? '3-Moderate/Limited' : '4-Minor/Localized',
-      priority:    toUrgency(alarm.severity),
-      closedDate:  null,
-      assignee:    '',
-      assignees:   [],
-      resolvedDate: null,
-    })
+    const incidentId = await prepareIncidentForAlarm(batch, alarmId, alarm, submitDate, 'ASSIGNED')
     batch.update(db.collection('alarms').doc(alarmId), { incidentId })
-    writesThisRun += 2
+    writesThisRun++
 
     await batch.commit()
 
@@ -320,9 +437,7 @@ async function triggerAlarm() {
 
   // Incident for critical + major only
   const shouldCreateIncident = severity === 'critical' || severity === 'major'
-  const linkedIncidentId     = shouldCreateIncident ? nextIncidentId() : null
-
-  const alarmDoc = {
+  const alarmDocBase = {
     antennaId:      pick.antennaId,
     siteId:         pick.siteId,
     technology:     pick.technology,
@@ -336,8 +451,20 @@ async function triggerAlarm() {
     durationMs:     null,
     acknowledgedAt: null,
     acknowledgedBy: null,
-    incidentId:     linkedIncidentId,
+    incidentId:     null,
   }
+
+  const batch = db.batch()
+  const linkedIncidentId = shouldCreateIncident
+    ? await prepareIncidentForAlarm(
+      batch,
+      alarmId,
+      alarmDocBase,
+      alarmTime,
+      severity === 'critical' ? 'IN PROGRESS' : 'ASSIGNED'
+    )
+    : null
+  const alarmDoc = { ...alarmDocBase, incidentId: linkedIncidentId }
 
   const updatedCells = cells.map(c =>
     c.technology === pick.technology
@@ -345,30 +472,9 @@ async function triggerAlarm() {
       : c
   )
 
-  const batch = db.batch()
   batch.set(db.collection('alarms').doc(alarmId), alarmDoc)
   batch.update(db.collection('topology').doc(pick.antennaId), { cells: updatedCells })
   writesThisRun += 2
-
-  if (linkedIncidentId) {
-    batch.set(db.collection('incidents').doc(linkedIncidentId), {
-      incidentNumber: linkedIncidentId,
-      submitDate:     alarmTime,
-      alarmId,
-      antennaId:      pick.antennaId,
-      technology:     pick.technology,
-      siteId:         pick.siteId,
-      status:         severity === 'critical' ? 'IN PROGRESS' : 'ASSIGNED',
-      urgency:        toUrgency(severity),
-      impact:         severity === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
-      priority:       toUrgency(severity),
-      closedDate:     null,
-      assignee:       '',
-      assignees:      [],
-      resolvedDate:   null,
-    })
-    writesThisRun++
-  }
 
   await batch.commit()
   activeAlarmCache.set(alarmId, { id: alarmId, ...alarmDoc })
@@ -418,8 +524,12 @@ async function resolveAlarm() {
   batch.update(db.collection('topology').doc(alarm.antennaId), { cells: updatedCells })
   writesThisRun += 2
 
-  // Update linked incident if present — no extra read needed (incidentId is on alarm)
-  if (alarm.incidentId) {
+  const incidentStillHasActiveAlarms = alarm.incidentId
+    ? Array.from(activeAlarmCache.values()).some(a => a.id !== alarmId && a.incidentId === alarm.incidentId)
+    : false
+
+  // Resolve the grouped incident only after its last active linked alarm clears.
+  if (alarm.incidentId && !incidentStillHasActiveAlarms) {
     batch.update(db.collection('incidents').doc(alarm.incidentId), {
       status:       'RESOLVED',
       resolvedDate: cancelTime,

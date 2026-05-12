@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  arrayUnion,
   getDocs,
   limit,
   onSnapshot,
@@ -17,6 +18,7 @@ import type { Antenna, Alarm, AlarmSeverity, ChatMessage, Incident, IncidentAssi
 const CELL_HISTORY_LIMIT = 50
 const INCIDENT_LIST_LIMIT = 100
 const RESOLVED_ALARM_LIMIT = 100
+const OPEN_INCIDENT_STATUSES: Incident['status'][] = ['ASSIGNED', 'IN PROGRESS']
 
 // Sites within this radius (metres) are automatically merged into the same incident
 const SITE_MERGE_RADIUS_M = 500
@@ -106,29 +108,119 @@ function severityToUrgency(severity: AlarmSeverity): Incident['urgency'] {
   }
 }
 
-export async function createIncidentForAlarm(
+function incidentSites(incident: Incident): string[] {
+  return incident.siteIds?.length ? incident.siteIds : [incident.siteId]
+}
+
+function incidentAntennas(incident: Incident): string[] {
+  return incident.antennaIds?.length ? incident.antennaIds : [incident.antennaId]
+}
+
+function incidentAlarms(incident: Incident): string[] {
+  return incident.alarmIds?.length ? incident.alarmIds : [incident.alarmId]
+}
+
+function incidentTechnologies(incident: Incident): Technology[] {
+  return incident.technologies?.length ? incident.technologies : [incident.technology]
+}
+
+function unique<T>(items: T[]): T[] {
+  return [...new Set(items)]
+}
+
+function priorityRank(priority: Incident['priority']): number {
+  switch (priority) {
+    case '1-Critical': return 1
+    case '2-High':     return 2
+    case '3-Medium':   return 3
+    default:           return 4
+  }
+}
+
+function incidentImpactFor(severity: AlarmSeverity): string {
+  return severity === 'critical' ? '2-Significant/Large' : '4-Minor/Localized'
+}
+
+export function incidentMatchesAlarm(incident: Incident, alarm: Alarm): boolean {
+  return incident.alarmId === alarm.id ||
+    incidentAlarms(incident).includes(alarm.id) ||
+    (alarm.incidentId !== null && incident.incidentNumber === alarm.incidentId)
+}
+
+async function getOpenIncidentsForAnySite(siteIds: string[]): Promise<Incident[]> {
+  const seen = new Set<string>()
+  const incidents: Incident[] = []
+
+  await Promise.all(siteIds.map(async siteId => {
+    const siteIncidents = await getIncidentsForSite(siteId)
+    for (const incident of siteIncidents) {
+      if (seen.has(incident.incidentNumber)) continue
+      seen.add(incident.incidentNumber)
+      if (OPEN_INCIDENT_STATUSES.includes(incident.status)) {
+        incidents.push(incident)
+      }
+    }
+  }))
+
+  return incidents.sort((a, b) => new Date(a.submitDate).getTime() - new Date(b.submitDate).getTime())
+}
+
+function nearbyIncidentScope(
   alarm: Alarm,
   primaryAntenna: Antenna,
   allAntennas?: Antenna[]
-): Promise<string> {
-  const incidentNumber = `INC${Date.now()}`
-  const urgency = severityToUrgency(alarm.severity)
-  const ref = doc(db, 'incidents', incidentNumber)
-
-  // Find nearby sites to merge into this incident
-  const nearbySiteIds   = new Set<string>([alarm.siteId])
-  const nearbyAntennaIds = new Set<string>([alarm.antennaId])
+): { siteIds: string[]; antennaIds: string[] } {
+  const siteIds = new Set<string>([alarm.siteId])
+  const antennaIds = new Set<string>([alarm.antennaId])
 
   if (allAntennas) {
     for (const a of allAntennas) {
       if (a.id === primaryAntenna.id) continue
       const dist = haversineM(primaryAntenna.latitude, primaryAntenna.longitude, a.latitude, a.longitude)
       if (dist <= SITE_MERGE_RADIUS_M) {
-        nearbySiteIds.add(a.siteId)
-        nearbyAntennaIds.add(a.id)
+        siteIds.add(a.siteId)
+        antennaIds.add(a.id)
       }
     }
   }
+
+  return {
+    siteIds: [...siteIds],
+    antennaIds: [...antennaIds],
+  }
+}
+
+export async function createIncidentForAlarm(
+  alarm: Alarm,
+  primaryAntenna: Antenna,
+  allAntennas?: Antenna[]
+): Promise<string> {
+  const urgency = severityToUrgency(alarm.severity)
+  const impact = incidentImpactFor(alarm.severity)
+  const scope = nearbyIncidentScope(alarm, primaryAntenna, allAntennas)
+  const existing = (await getOpenIncidentsForAnySite(scope.siteIds))[0]
+
+  if (existing) {
+    const existingPriority = existing.priority ?? existing.urgency
+    const shouldEscalate = priorityRank(urgency) < priorityRank(existingPriority)
+    const update = {
+      siteIds:      arrayUnion(...scope.siteIds),
+      antennaIds:   arrayUnion(...scope.antennaIds),
+      alarmIds:     arrayUnion(alarm.id),
+      technologies: arrayUnion(alarm.technology),
+      ...(shouldEscalate ? { urgency, priority: urgency, impact } : {}),
+    }
+
+    await Promise.all([
+      updateDoc(doc(db, 'incidents', existing.incidentNumber), update),
+      updateDoc(doc(db, 'alarms', alarm.id), { incidentId: existing.incidentNumber }),
+    ])
+
+    return existing.incidentNumber
+  }
+
+  const incidentNumber = `INC${Date.now()}`
+  const ref = doc(db, 'incidents', incidentNumber)
 
   await setDoc(ref, {
     incidentNumber,
@@ -137,20 +229,62 @@ export async function createIncidentForAlarm(
     antennaId:    alarm.antennaId,
     technology:   alarm.technology,
     siteId:       alarm.siteId,
-    siteIds:      [...nearbySiteIds],
-    antennaIds:   [...nearbyAntennaIds],
+    siteIds:      scope.siteIds,
+    antennaIds:   scope.antennaIds,
     alarmIds:     [alarm.id],
     technologies: [alarm.technology],
     status:      'ASSIGNED',
     urgency,
-    impact:      alarm.severity === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
+    impact,
     priority:    urgency,
     closedDate:  null,
     assignee:    '',
     assignees:   [],
     resolvedDate: null,
   } satisfies Incident)
+  await updateDoc(doc(db, 'alarms', alarm.id), { incidentId: incidentNumber })
   return incidentNumber
+}
+
+export async function mergeIncidentInto(
+  target: Incident,
+  source: Incident
+): Promise<void> {
+  if (target.incidentNumber === source.incidentNumber) return
+
+  const now = new Date().toISOString()
+  const targetPriority = target.priority ?? target.urgency
+  const sourcePriority = source.priority ?? source.urgency
+  const shouldEscalate = priorityRank(sourcePriority) < priorityRank(targetPriority)
+  const assigneesByUid = new Map(
+    [...(target.assignees ?? []), ...(source.assignees ?? [])].map(a => [a.uid, a])
+  )
+
+  await Promise.all([
+    updateDoc(doc(db, 'incidents', target.incidentNumber), {
+      siteIds:      unique([...incidentSites(target), ...incidentSites(source)]),
+      antennaIds:   unique([...incidentAntennas(target), ...incidentAntennas(source)]),
+      alarmIds:     unique([...incidentAlarms(target), ...incidentAlarms(source)]),
+      technologies: unique([...incidentTechnologies(target), ...incidentTechnologies(source)]),
+      assignees:    [...assigneesByUid.values()],
+      ...(shouldEscalate ? {
+        urgency:  source.urgency,
+        priority: source.priority,
+        impact:   source.impact,
+      } : {}),
+    }),
+    updateDoc(doc(db, 'incidents', source.incidentNumber), {
+      status:       'CLOSED',
+      closedDate:   now,
+      resolvedDate: source.resolvedDate ?? now,
+      mergedInto:   target.incidentNumber,
+    }),
+  ])
+
+  const sourceAlarmIds = incidentAlarms(source)
+  await Promise.all(sourceAlarmIds.map(alarmId =>
+    updateDoc(doc(db, 'alarms', alarmId), { incidentId: target.incidentNumber }).catch(() => {})
+  ))
 }
 
 export async function getIncidentsForSite(siteId: string): Promise<Incident[]> {

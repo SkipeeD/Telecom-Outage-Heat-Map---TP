@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { motion } from 'motion/react'
-import { subscribeToAntennas, subscribeToIncidents } from '@/lib/firestore'
+import { incidentMatchesAlarm, subscribeToAntennas, subscribeToIncidents } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import type { Antenna, Alarm, AlarmSeverity, Incident, Technology } from '@/types'
 import { ArrowLeft, Clock, Users, CheckCircle2, Search, MapPin } from 'lucide-react'
@@ -69,9 +69,7 @@ function DistributionContent() {
         .filter(c => c.currentAlarm && !c.currentAlarm.resolved)
         .map(c => {
           const alarm = c.currentAlarm!
-          const incident = incidents.find(i =>
-            i.alarmId === alarm.id || (alarm.incidentId !== null && i.incidentNumber === alarm.incidentId)
-          )
+          const incident = incidents.find(i => incidentMatchesAlarm(i, alarm))
           const item: AlarmDisplayItem = {
             ...alarm,
             antennaName: a.name,

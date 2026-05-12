@@ -15,7 +15,7 @@ import { CellTile } from './CellTile'
 import { AlarmCard, EmptyAlarm } from './AlarmCard'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/components/AuthProvider'
-import { acknowledgeAssignedIncidents, getIncidentsForCell } from '@/lib/firestore'
+import { acknowledgeAssignedIncidents, getIncidentsForSite } from '@/lib/firestore'
 import type { Incident } from '@/types'
 
 const POPUP_WIDTH = 360
@@ -52,7 +52,7 @@ export function AntennaPopup({
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState<Position | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
-  const [cellIncidents, setCellIncidents] = useState<Incident[]>([])
+  const [siteIncidents, setSiteIncidents] = useState<Incident[]>([])
   const hasDragged = useRef(false)
 
   const overall = useMemo(() => overallSeverity(antenna.cells), [antenna.cells])
@@ -68,7 +68,7 @@ export function AntennaPopup({
     setPrevAntennaId(antenna.id)
     setSelectedTech(worstCell?.technology ?? antenna.cells[0]?.technology ?? null)
     setAcknowledged(false)
-    setCellIncidents([])
+    setSiteIncidents([])
   }
 
   // Ref mutation must stay outside render
@@ -76,17 +76,17 @@ export function AntennaPopup({
     hasDragged.current = false
   }, [antenna.id])
 
-  // Load incidents for the selected cell so engineers can ack + promote
+  // Load incidents for the whole site/nearby-site cluster.
   useEffect(() => {
-    if (!open || !selectedTech) return
+    if (!open) return
     let cancelled = false
-    void getIncidentsForCell(antenna.id, selectedTech).then(incs => {
-      if (!cancelled) setCellIncidents(incs)
+    void getIncidentsForSite(antenna.siteId).then(incs => {
+      if (!cancelled) setSiteIncidents(incs)
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [open, antenna.id, selectedTech])
+  }, [open, antenna.siteId])
 
-  const acknowledgeableIncidents = cellIncidents.filter(i =>
+  const acknowledgeableIncidents = siteIncidents.filter(i =>
     i.status === 'ASSIGNED' &&
     (profile?.role === 'admin' || (i.assignees ?? []).some(a => a.uid === profile?.uid))
   )
@@ -101,7 +101,7 @@ export function AntennaPopup({
       )
       if (updated.length > 0) {
         const updatedSet = new Set(updated)
-        setCellIncidents(prev =>
+        setSiteIncidents(prev =>
           prev.map(i => updatedSet.has(i.incidentNumber) ? { ...i, status: 'IN PROGRESS' } : i)
         )
         setAcknowledged(true)

@@ -59,6 +59,7 @@ export interface Incident {
   assignee: string
   assignees: IncidentAssignee[]
   resolvedDate: string | null
+  mergedInto?: string | null
 }
 
 export interface Antenna {

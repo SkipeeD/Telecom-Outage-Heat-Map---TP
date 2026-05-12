@@ -1026,6 +1026,61 @@ function nextIncidentId(): string {
   return `INC${String(incidentCounter++).padStart(7, '0')}`
 }
 
+const SITE_MERGE_RADIUS_M = 500
+
+interface SeedSite {
+  antennaId: string
+  siteId: string
+  lat: number
+  lon: number
+}
+
+interface SeedIncidentGroup {
+  incidentNumber: string
+  submitDate: string
+  alarmId: string
+  antennaId: string
+  technology: Technology
+  siteId: string
+  siteIds: Set<string>
+  antennaIds: Set<string>
+  alarmIds: Set<string>
+  technologies: Set<Technology>
+  status: 'ASSIGNED' | 'IN PROGRESS'
+  urgency: string
+  impact: string
+  priority: string
+  closedDate: null
+  assignee: string
+  assignees: []
+  resolvedDate: null
+}
+
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6_371_000
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function nearbySeedSites(primary: SeedSite, sites: SeedSite[]): SeedSite[] {
+  return sites.filter(site =>
+    haversineM(primary.lat, primary.lon, site.lat, site.lon) <= SITE_MERGE_RADIUS_M
+  )
+}
+
+function severityRank(severity: AlarmSeverity): number {
+  switch (severity) {
+    case 'critical': return 1
+    case 'major':    return 2
+    case 'minor':    return 3
+    default:         return 4
+  }
+}
+
 // Firestore batch limit is 500 ops — this helper fans out across multiple batches automatically
 class BatchWriter {
   private batches: ReturnType<typeof db.batch>[] = []
@@ -1067,13 +1122,85 @@ async function seed() {
   let totalIncidents = 0
 
   // Manifest for simulator — avoids reading full topology collection on every run
-  const manifestEntries: Array<{ antennaId: string; siteId: string; technology: Technology }> = []
+  const manifestEntries: Array<{ antennaId: string; siteId: string; technology: Technology; latitude: number; longitude: number }> = []
   const activeAlarms: Record<string, Alarm> = {}
+  const incidentGroups = new Map<string, SeedIncidentGroup>()
+
+  function findIncidentGroup(site: SeedSite): SeedIncidentGroup | null {
+    for (const group of incidentGroups.values()) {
+      if (group.siteIds.has(site.siteId)) return group
+    }
+    return null
+  }
+
+  function registerIncidentAlarm(
+    site: SeedSite,
+    nearbySites: SeedSite[],
+    alarmId: string,
+    tech: Technology,
+    status: AlarmSeverity,
+    alarmTime: string
+  ): string {
+    let group = findIncidentGroup(site)
+    if (!group) {
+      const incidentNumber = nextIncidentId()
+      group = {
+        incidentNumber,
+        submitDate: alarmTime,
+        alarmId,
+        antennaId: site.antennaId,
+        technology: tech,
+        siteId: site.siteId,
+        siteIds: new Set<string>(),
+        antennaIds: new Set<string>(),
+        alarmIds: new Set<string>(),
+        technologies: new Set<Technology>(),
+        status: status === 'critical' ? 'IN PROGRESS' : 'ASSIGNED',
+        urgency: toUrgency(status),
+        impact: status === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
+        priority: toPriority(status),
+        closedDate: null,
+        assignee: '',
+        assignees: [],
+        resolvedDate: null,
+      }
+      incidentGroups.set(incidentNumber, group)
+      totalIncidents++
+    }
+
+    if (new Date(alarmTime).getTime() < new Date(group.submitDate).getTime()) {
+      group.submitDate = alarmTime
+    }
+    if (severityRank(status) < severityRank(group.priority === '1-Critical' ? 'critical' : group.priority === '2-High' ? 'major' : group.priority === '3-Medium' ? 'minor' : 'warning')) {
+      group.urgency = toUrgency(status)
+      group.priority = toPriority(status)
+      group.impact = status === 'critical' ? '2-Significant/Large' : '4-Minor/Localized'
+      if (status === 'critical') group.status = 'IN PROGRESS'
+    }
+
+    for (const nearby of nearbySites) {
+      group.siteIds.add(nearby.siteId)
+      group.antennaIds.add(nearby.antennaId)
+    }
+    group.alarmIds.add(alarmId)
+    group.technologies.add(tech)
+
+    return group.incidentNumber
+  }
 
   for (let ci = 0; ci < CITIES.length; ci++) {
     const city = CITIES[ci]
     const rng  = seededRandom(ci * 9999 + 42)
     const positions = generatePositions(city, rng)
+    const citySites: SeedSite[] = positions.map((pos, i) => {
+      const siteId = `${city.code}${siteNumber(ci, i)}`
+      return {
+        antennaId: siteId.toLowerCase(),
+        siteId,
+        lat: pos.lat,
+        lon: pos.lon,
+      }
+    })
 
     for (let i = 0; i < city.antennaCount; i++) {
       const num      = siteNumber(ci, i)
@@ -1091,7 +1218,7 @@ async function seed() {
         const tech   = bundle[ci2]
         const status = drawStatus(rng)
 
-        manifestEntries.push({ antennaId: id, siteId, technology: tech })
+        manifestEntries.push({ antennaId: id, siteId, technology: tech, latitude: lat, longitude: lon })
 
         // ── Active alarm ──────────────────────────────────────────
         let currentAlarm: object | undefined = undefined
@@ -1112,7 +1239,17 @@ async function seed() {
               status === 'critical' ||
               (status === 'major' && alarmAgeMinutes > 240)
 
-          const linkedIncidentId = shouldCreateIncident ? nextIncidentId() : null
+          const siteInfo = citySites[i]
+          const linkedIncidentId = shouldCreateIncident
+            ? registerIncidentAlarm(
+              siteInfo,
+              nearbySeedSites(siteInfo, citySites),
+              alarmId,
+              tech,
+              status,
+              alarmTime
+            )
+            : null
 
           const alarmData = {
             antennaId:      id,
@@ -1136,28 +1273,6 @@ async function seed() {
           activeAlarms[alarmId] = { id: alarmId, ...alarmData }
           totalAlarms++
 
-          if (linkedIncidentId) {
-            const incidentRef    = db.collection('incidents').doc(linkedIncidentId)
-            const incidentStatus = status === 'critical' ? 'IN PROGRESS' : 'ASSIGNED'
-
-            incidentWriter.set(incidentRef, {
-              incidentNumber: linkedIncidentId,
-              submitDate:     alarmTime,
-              alarmId,
-              antennaId:      id,
-              technology:     tech,
-              siteId,
-              status:         incidentStatus,
-              urgency:        toUrgency(status),
-              impact:         status === 'critical' ? '2-Significant/Large' : '4-Minor/Localized',
-              priority:       toPriority(status),
-              closedDate:     null,
-              assignee:       '',
-              assignees:      [],
-              resolvedDate:   null,
-            })
-            totalIncidents++
-          }
         }
 
         cells.push({
@@ -1208,6 +1323,29 @@ async function seed() {
         cells,
       })
     }
+  }
+
+  for (const group of incidentGroups.values()) {
+    incidentWriter.set(db.collection('incidents').doc(group.incidentNumber), {
+      incidentNumber: group.incidentNumber,
+      submitDate:     group.submitDate,
+      alarmId:        group.alarmId,
+      antennaId:      group.antennaId,
+      technology:     group.technology,
+      siteId:         group.siteId,
+      siteIds:        [...group.siteIds],
+      antennaIds:     [...group.antennaIds],
+      alarmIds:       [...group.alarmIds],
+      technologies:   [...group.technologies],
+      status:         group.status,
+      urgency:        group.urgency,
+      impact:         group.impact,
+      priority:       group.priority,
+      closedDate:     group.closedDate,
+      assignee:       group.assignee,
+      assignees:      group.assignees,
+      resolvedDate:   group.resolvedDate,
+    })
   }
 
   await topologyWriter.commitAll('Topology')
