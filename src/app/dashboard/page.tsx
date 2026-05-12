@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
-import { subscribeToAntennas } from '@/lib/firestore'
+import { incidentMatchesAlarm, subscribeToAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary, Incident } from '@/types'
@@ -283,9 +283,7 @@ export default function DashboardPage() {
       .filter(c => c.currentAlarm && !c.currentAlarm.resolved)
       .map(c => {
         const alarm = c.currentAlarm!
-        const incident = incidents.find(i =>
-          i.alarmId === alarm.id || (alarm.incidentId !== null && i.incidentNumber === alarm.incidentId)
-        )
+        const incident = incidents.find(i => incidentMatchesAlarm(i, alarm))
         return { ...alarm, antennaName: a.name, incident }
       })
     )

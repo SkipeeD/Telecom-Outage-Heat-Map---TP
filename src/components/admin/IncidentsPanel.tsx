@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
-import { RefreshCw } from 'lucide-react'
+import { GitMerge, RefreshCw } from 'lucide-react'
 import type { Incident, IncidentAssignee } from '@/types'
-import { getAllIncidents, updateIncidentAssignees } from '@/lib/firestore'
+import { getAllIncidents, mergeIncidentInto, updateIncidentAssignees } from '@/lib/firestore'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AssignEngineersModal } from './AssignEngineersModal'
 
@@ -73,6 +73,7 @@ export function IncidentsPanel() {
   const [error, setError]               = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [assigningInc, setAssigningInc] = useState<Incident | null>(null)
+  const [groupingInc, setGroupingInc]   = useState<Incident | null>(null)
   const [refreshKey, setRefreshKey]     = useState(0)
 
   const loadIncidents = useCallback(() => setRefreshKey(k => k + 1), [])
@@ -96,6 +97,14 @@ export function IncidentsPanel() {
     setIncidents(prev =>
       prev.map(i => i.incidentNumber === incidentNumber ? { ...i, assignees } : i)
     )
+  }
+
+  async function handleGroup(source: Incident, targetIncidentNumber: string) {
+    const target = incidents.find(i => i.incidentNumber === targetIncidentNumber)
+    if (!target) return
+    await mergeIncidentInto(target, source)
+    setGroupingInc(null)
+    setIncidents(await getAllIncidents())
   }
 
   const filtered = incidents.filter(i =>
@@ -223,6 +232,7 @@ export function IncidentsPanel() {
                     const displayStatus = getDisplayStatus(inc)
                     const statusColor   = INC_STATUS_COLOR[displayStatus] ?? 'var(--text-muted)'
                     const priorityColor = INC_PRIO_COLOR[inc.priority] ?? 'var(--text-secondary)'
+                    const canGroup      = inc.status === 'ASSIGNED' || inc.status === 'IN PROGRESS'
 
                     return (
                       <motion.div
@@ -327,6 +337,24 @@ export function IncidentsPanel() {
                             )}
                           </div>
 
+                          {canGroup && (
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => setGroupingInc(inc)}
+                              className="
+                                flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)]
+                                text-[10px] font-medium uppercase tracking-widest cursor-pointer
+                                border border-[var(--glass-border)] bg-[var(--glass-bg)]
+                                text-[var(--text-secondary)] hover:text-[var(--text-primary)]
+                                hover:bg-[var(--glass-hover)] hover:border-[var(--border-strong)]
+                                transition-all duration-150 whitespace-nowrap
+                              "
+                            >
+                              <GitMerge className="size-3" />
+                              Group
+                            </motion.button>
+                          )}
+
                           {/* Assign button */}
                           <motion.button
                             whileTap={{ scale: 0.95 }}
@@ -364,6 +392,119 @@ export function IncidentsPanel() {
         onClose={() => setAssigningInc(null)}
         onSave={handleSave}
       />
+      <GroupIncidentModal
+        incident={groupingInc}
+        incidents={incidents}
+        open={groupingInc !== null}
+        onClose={() => setGroupingInc(null)}
+        onGroup={handleGroup}
+      />
     </>
+  )
+}
+
+interface GroupIncidentModalProps {
+  incident: Incident | null
+  incidents: Incident[]
+  open: boolean
+  onClose: () => void
+  onGroup: (source: Incident, targetIncidentNumber: string) => Promise<void>
+}
+
+function GroupIncidentModal({ incident, incidents, open, onClose, onGroup }: GroupIncidentModalProps) {
+  const [target, setTarget] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const targets = useMemo(() => incidents.filter(i => {
+    if (!incident) return false
+    return i.incidentNumber !== incident.incidentNumber &&
+      (i.status === 'ASSIGNED' || i.status === 'IN PROGRESS')
+  }), [incident, incidents])
+
+  const activeTarget = targets.some(i => i.incidentNumber === target)
+    ? target
+    : targets[0]?.incidentNumber ?? ''
+
+  async function handleSubmit() {
+    if (!incident || !activeTarget) return
+    setSaving(true)
+    try {
+      await onGroup(incident, activeTarget)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open || !incident) return null
+
+  return (
+    <div className="fixed inset-0 z-[9990] flex items-center justify-center px-4">
+      <button
+        aria-label="Close grouping modal"
+        onClick={onClose}
+        className="absolute inset-0 bg-[rgba(4,4,12,0.65)] backdrop-blur-[3px]"
+      />
+      <motion.div
+        role="dialog"
+        aria-modal
+        aria-label="Group incident"
+        initial={{ opacity: 0, scale: 0.96, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 6 }}
+        transition={{ duration: 0.2, ease: EASE }}
+        className="
+          relative z-[9991] w-[420px] max-w-full rounded-[var(--radius-lg)]
+          bg-[rgba(9,9,20,0.96)] backdrop-blur-[36px]
+          border border-[rgba(255,255,255,0.10)] shadow-[var(--shadow-lg)]
+          overflow-hidden
+        "
+      >
+        <div className="px-5 py-4 border-b border-[var(--glass-border)]">
+          <div className="text-[15px] font-semibold text-[var(--text-primary)]">Group Incident</div>
+          <div className="mt-1 text-[12px] text-[var(--text-secondary)]">
+            Fold {incident.incidentNumber} into another open incident.
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <label className="block text-[11px] font-medium uppercase tracking-widest text-[var(--text-muted)]">
+            Target Incident
+          </label>
+          <select
+            value={activeTarget}
+            onChange={e => setTarget(e.target.value)}
+            className="
+              w-full rounded-[var(--radius-md)] border border-[var(--glass-border)]
+              bg-[var(--bg-overlay)] px-3 py-2 text-[13px] font-mono text-[var(--text-primary)]
+              outline-none focus:border-[var(--border-accent)]
+            "
+          >
+            {targets.length === 0 ? (
+              <option value="">No other open incidents</option>
+            ) : targets.map(i => (
+              <option key={i.incidentNumber} value={i.incidentNumber}>
+                {i.incidentNumber} · {(i.siteIds?.length ? i.siteIds : [i.siteId]).join(', ')}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--glass-border)]">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-[var(--radius-md)] text-[11px] font-medium uppercase tracking-widest text-[var(--text-secondary)] border border-[var(--glass-border)] bg-[var(--glass-bg)] hover:bg-[var(--glass-hover)] cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!activeTarget || saving}
+            className="px-3 py-1.5 rounded-[var(--radius-md)] text-[11px] font-medium uppercase tracking-widest text-[var(--text-inverse)] bg-[var(--accent-bright)] disabled:opacity-40 cursor-pointer"
+          >
+            {saving ? 'Grouping...' : 'Group'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
   )
 }

@@ -38,6 +38,18 @@ service cloud.firestore {
       // Admins can update anything.
       // Assigned engineers can only touch lifecycle fields.
       allow update: if isAdmin()
+        || (isEngineerOrAdmin() &&
+            request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'siteIds',
+                'antennaIds',
+                'alarmIds',
+                'technologies',
+                'urgency',
+                'impact',
+                'priority'
+              ]))
         || (isAssignedEngineer() &&
             request.resource.data.diff(resource.data)
               .affectedKeys()
