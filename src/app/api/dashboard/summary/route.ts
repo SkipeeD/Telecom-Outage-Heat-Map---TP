@@ -4,7 +4,7 @@ import { getAdminAuth, getAdminDb } from '@/lib/firebase-admin'
 import type { Alarm, DashboardSummary, Incident } from '@/types'
 import type { NextRequest } from 'next/server'
 
-const INCIDENT_LIST_LIMIT = 100
+const INCIDENT_LIST_LIMIT = 500
 const RESOLVED_ALARM_LIMIT = 100
 const LONG_LIVED_ALARM_LIMIT = 20
 const LONG_LIVED_THRESHOLD_MS = 24 * 60 * 60_000
@@ -82,6 +82,13 @@ const getCachedDashboardSummary = unstable_cache(
   },
 )
 
+/*
+ * Dashboard Summary API Route
+ * Note: The main dashboard and engineer pages have been moved to real-time Firestore 
+ * subscriptions for better responsiveness. This route remains for potential 
+ * non-client-side data needs or legacy fallback, and provides a cached overview 
+ * of network health.
+ */
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get('Authorization')

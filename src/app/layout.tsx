@@ -20,8 +20,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-      <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable)}>
-      <body className="h-full flex flex-col bg-bg-primary text-text-primary">
+      /* 
+       * suppressHydrationWarning added to prevent mismatches between server-rendered 
+       * and client-rendered HTML due to theme and browser-specific attributes.
+       */
+      <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable)} suppressHydrationWarning>
+      <body className="h-full flex flex-col bg-bg-primary text-text-primary" suppressHydrationWarning>
         <AuthProvider>
           <FilterProvider>
             <Navbar />

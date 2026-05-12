@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
-import { subscribeToAntennas } from '@/lib/firestore'
+import { subscribeToAntennas, subscribeToIncidents, subscribeToLongLivedAlarms } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary, Incident } from '@/types'
@@ -19,6 +19,7 @@ import {
 import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
 import { cityForAntenna } from '@/lib/weather-cities'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -87,9 +88,9 @@ export default function DashboardPage() {
   const { theme } = useTheme()
   const router = useRouter()
   const [antennas, setAntennas] = useState<Antenna[]>([])
-  const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
   const [incidents, setIncidents] = useState<Incident[]>([])
+  const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
   
   const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
   const [selectedCity, setSelectedCity] = useState<CityWeatherDetail | null>(null)
@@ -116,42 +117,21 @@ export default function DashboardPage() {
     return () => clearInterval(interval)
   }, [isAutoScrolling])
 
+  /* 
+   * Dashboard Data Subscriptions
+   * We switched from manual API polling to real-time Firestore subscriptions.
+   * This ensures the NOC dashboard reflects new incidents and alarm changes instantly.
+   */
   useEffect(() => {
     if (!user) return
     const unsubAntennas = subscribeToAntennas(setAntennas)
-    return () => unsubAntennas()
-  }, [user])
-
-  useEffect(() => {
-    if (!user) return
-    let cancelled = false
-
-    const fetchDashboardSummary = async () => {
-      try {
-        const idToken = await user.getIdToken()
-        const res = await fetch('/api/dashboard/summary', {
-          headers: {
-            Authorization: `Bearer ${idToken}`,
-          },
-        })
-        if (!res.ok || cancelled) return
-
-        const summary = await res.json() as DashboardSummary
-        if (cancelled) return
-
-        setResolvedAlarms(summary.resolvedAlarms)
-        setLongLivedAlarms(summary.longLivedAlarms)
-        setIncidents(summary.incidents)
-      } catch {
-        // dashboard history is non-critical; live topology stays active
-      }
-    }
-
-    void fetchDashboardSummary()
-    const id = window.setInterval(() => void fetchDashboardSummary(), 5 * 60 * 1000)
+    const unsubIncidents = subscribeToIncidents(setIncidents)
+    const unsubLongLived = subscribeToLongLivedAlarms(setLongLivedAlarms)
+    
     return () => {
-      cancelled = true
-      window.clearInterval(id)
+      unsubAntennas()
+      unsubIncidents()
+      unsubLongLived()
     }
   }, [user])
 
@@ -180,6 +160,14 @@ export default function DashboardPage() {
       clearInterval(id)
     }
   }, [user, fetchWeather])
+
+  const filteredIncidents = useMemo(() => {
+    const now = new Date()
+    const days = timeRange === '30d' ? 30 : timeRange === '3m' ? 90 : timeRange === '6m' ? 180 : 365
+    const threshold = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+    
+    return incidents.filter(i => new Date(i.submitDate) >= threshold)
+  }, [incidents, timeRange])
 
   const stats = useMemo(() => {
     const total = antennas.length
@@ -224,40 +212,96 @@ export default function DashboardPage() {
       color: techColorVar[t]
     }))
 
-    // Process resolved alarms for trend
-    const resolvedByDate: Record<string, number> = {}
-    resolvedAlarms.forEach(a => {
-      if (a.cancelTime) {
-        const date = new Date(a.cancelTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-        resolvedByDate[date] = (resolvedByDate[date] || 0) + 1
+    // Process filtered incidents for trend
+    const dailyStats: Record<string, { created: number; resolved: number }> = {}
+    filteredIncidents.forEach(i => {
+      const dateObj = new Date(i.submitDate)
+      let key = ''
+      
+      if (timeRange === '30d' || timeRange === '3m') {
+        key = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      } else if (timeRange === '6m') {
+        // Weekly grouping
+        const firstDayOfYear = new Date(dateObj.getFullYear(), 0, 1)
+        const pastDaysOfYear = (dateObj.getTime() - firstDayOfYear.getTime()) / 86400000
+        const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7)
+        key = `Week ${weekNum}, ${dateObj.getFullYear()}`
+      } else {
+        // Monthly grouping
+        key = dateObj.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+      }
+
+      if (!dailyStats[key]) dailyStats[key] = { created: 0, resolved: 0 }
+      dailyStats[key].created++
+      
+      if (i.status === 'RESOLVED' || i.status === 'CLOSED') {
+        const resDateObj = new Date(i.resolvedDate || i.closedDate || i.submitDate)
+        let resKey = ''
+        if (timeRange === '30d' || timeRange === '3m') {
+          resKey = resDateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        } else if (timeRange === '6m') {
+          const firstDayOfYear = new Date(resDateObj.getFullYear(), 0, 1)
+          const pastDaysOfYear = (resDateObj.getTime() - firstDayOfYear.getTime()) / 86400000
+          const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7)
+          resKey = `Week ${weekNum}, ${resDateObj.getFullYear()}`
+        } else {
+          resKey = resDateObj.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+        }
+        if (!dailyStats[resKey]) dailyStats[resKey] = { created: 0, resolved: 0 }
+        dailyStats[resKey].resolved++
       }
     })
 
-    const resolvedChartData = Object.entries(resolvedByDate)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(-10)
+    const resolvedChartData = Object.entries(dailyStats)
+      .map(([date, data]) => ({
+        date,
+        created: data.created,
+        resolved: data.resolved,
+        rate: data.created > 0 ? Math.round((data.resolved / data.created) * 100) : 0
+      }))
+      .sort((a, b) => {
+        // This sorting is tricky with multiple formats, but filteredIncidents are already roughly ordered by time.
+        // For simplicity, we can rely on the data order if we processed it chronologically, 
+        // but here we use keys. Let's just sort by actual date values.
+        const findDateFor = (k: string) => {
+           const match = filteredIncidents.find(fi => {
+             const d = new Date(fi.submitDate)
+             if (timeRange === '30d' || timeRange === '3m') return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) === k
+             if (timeRange === '6m') {
+                const firstDayOfYear = new Date(d.getFullYear(), 0, 1)
+                const pastDaysOfYear = (d.getTime() - firstDayOfYear.getTime()) / 86400000
+                const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7)
+                return `Week ${weekNum}, ${d.getFullYear()}` === k
+             }
+             return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) === k
+           })
+           return match ? new Date(match.submitDate).getTime() : 0
+        }
+        return findDateFor(a.date) - findDateFor(b.date)
+      })
 
     return { total, alarms, ok, pieData, barData, resolvedChartData }
-  }, [antennas, resolvedAlarms])
+  }, [antennas, filteredIncidents, timeRange])
 
   const exportResolvedToExcel = () => {
-    if (resolvedAlarms.length === 0) return
-    const headers = ['Site ID', 'Technology', 'Severity', 'Alarm Text', 'Triggered At', 'Resolved At']
-    const rows = resolvedAlarms.map(a => [
-      a.siteId,
-      a.technology,
-      a.severity,
-      `"${a.text.replace(/"/g, '""')}"`,
-      a.alarmTime,
-      a.cancelTime || ''
+    if (filteredIncidents.length === 0) return
+    const headers = ['Incident Number', 'Site IDs', 'Technologies', 'Priority', 'Status', 'Assignees (Names)', 'Created At', 'Resolved At']
+    const rows = filteredIncidents.map(i => [
+      i.incidentNumber,
+      (i.siteIds || [i.siteId || 'N/A']).join('; '),
+      (i.technologies || [i.technology || 'N/A']).join('; '),
+      i.priority,
+      i.status,
+      `"${(i.assignees || []).map(a => a.displayName || a.email).join(', ').replace(/"/g, '""')}"`,
+      i.submitDate,
+      i.resolvedDate || i.closedDate || ''
     ])
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n")
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.setAttribute("href", url)
-    link.setAttribute("download", `resolved_alarms_${new Date().toISOString().split('T')[0]}.csv`)
+    link.setAttribute("download", `incident_resolution_report_${new Date().toISOString().split('T')[0]}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -507,17 +551,43 @@ export default function DashboardPage() {
                   <History className="size-4 text-[var(--alarm-ok)]" />
                   Resolution Performance
                 </CardTitle>
-                <p className="text-[10px] text-[var(--text-muted)]">Alarms resolved per day</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {(['30d', '3m', '6m', '1y'] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setTimeRange(r)}
+                      className={cn(
+                        "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-tighter transition-all",
+                        timeRange === r 
+                          ? "bg-[var(--accent)] text-white shadow-[0_0_8px_var(--accent)]" 
+                          : "bg-[var(--glass-bg)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--glass-border)]"
+                      )}
+                    >
+                      {r === '30d' ? '30 Days' : r === '3m' ? '3 Months' : r === '6m' ? '6 Months' : '1 Year'}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={exportResolvedToExcel}
-                className="h-8 bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[10px] uppercase tracking-widest gap-2"
-              >
-                <Download className="size-3.5" />
-                Export Solved (CSV)
-              </Button>
+              <div className="flex items-center gap-4">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => router.push('/dashboard/engineers')}
+                  className="h-8 text-[var(--accent)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 text-[10px] uppercase tracking-widest gap-2 font-bold"
+                >
+                  <Users className="size-3.5" />
+                  Engineer Details
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={exportResolvedToExcel}
+                  className="h-8 bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[10px] uppercase tracking-widest gap-2"
+                >
+                  <Download className="size-3.5" />
+                  Export Report (CSV)
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="h-[240px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -526,6 +596,10 @@ export default function DashboardPage() {
                     <linearGradient id="colorResolved" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={getCSSVar('--alarm-ok')} stopOpacity={0.3}/>
                       <stop offset="95%" stopColor={getCSSVar('--alarm-ok')} stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorCreated" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={getCSSVar('--alarm-major')} stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor={getCSSVar('--alarm-major')} stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={getCSSVar('--border')} />
@@ -553,7 +627,16 @@ export default function DashboardPage() {
                   />
                   <Area 
                     type="monotone" 
-                    dataKey="count" 
+                    dataKey="created" 
+                    stroke={getCSSVar('--alarm-major')} 
+                    fillOpacity={1} 
+                    fill="url(#colorCreated)" 
+                    strokeWidth={2}
+                    name="Incidents"
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="resolved" 
                     stroke={getCSSVar('--alarm-ok')} 
                     fillOpacity={1} 
                     fill="url(#colorResolved)" 
@@ -885,39 +968,18 @@ export default function DashboardPage() {
                                 No engineers assigned
                               </span>
                             ) : (
-                              <div className="flex items-center -space-x-1.5">
-                                {assignees.slice(0, 4).map((assignee, index) => {
-                                  const label = assignee.displayName ?? assignee.email.split('@')[0]
-                                  const initials = label.slice(0, 2).toUpperCase()
-
+                              <div className="flex flex-wrap items-center justify-end gap-1.5 max-w-[200px]">
+                                {assignees.map((assignee) => {
+                                  const name = assignee.displayName ?? assignee.email.split('@')[0]
                                   return (
                                     <div
                                       key={assignee.uid}
-                                      title={assignee.email}
-                                      className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[9px] font-bold ring-2 ring-[var(--bg-base)]"
-                                      style={{
-                                        background: 'color-mix(in srgb, var(--alarm-ok) 15%, var(--bg-subtle))',
-                                        color: 'var(--alarm-ok)',
-                                        border: '1px solid rgba(52,211,153,0.3)',
-                                        zIndex: assignees.length - index,
-                                      }}
+                                      className="px-1.5 py-0.5 rounded bg-[var(--alarm-ok)]/10 border border-[var(--alarm-ok)]/20 text-[9px] font-bold text-[var(--alarm-ok)] whitespace-nowrap"
                                     >
-                                      {initials}
+                                      {name}
                                     </div>
                                   )
                                 })}
-                                {assignees.length > 4 && (
-                                  <div
-                                    className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[8px] font-bold ring-2 ring-[var(--bg-base)]"
-                                    style={{
-                                      background: 'var(--bg-subtle)',
-                                      color: 'var(--text-muted)',
-                                      border: '1px solid var(--glass-border)',
-                                    }}
-                                  >
-                                    +{assignees.length - 4}
-                                  </div>
-                                )}
                               </div>
                             )}
                           </div>
