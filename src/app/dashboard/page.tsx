@@ -224,14 +224,6 @@ export default function DashboardPage() {
     return () => clearInterval(id)
   }, [user, weatherDetails, fetchAiPrediction])
 
-  const filteredIncidents = useMemo(() => {
-    const now = new Date()
-    const days = timeRange === '30d' ? 30 : timeRange === '3m' ? 90 : timeRange === '6m' ? 180 : 365
-    const threshold = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
-    
-    return incidents.filter(i => new Date(i.submitDate) >= threshold)
-  }, [incidents, timeRange])
-
   const stats = useMemo(() => {
     const total = antennas.length
     let alarms = 0
