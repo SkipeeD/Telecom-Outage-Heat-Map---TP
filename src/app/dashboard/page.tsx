@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import {
   Activity, ShieldAlert, CheckCircle2, Zap, Globe, Download, Clock, History,
-  ArrowRight, Cloud, CloudRain, Sun, Wind, Thermometer, LucideIcon, MapPin, Users
+  ArrowRight, Cloud, CloudRain, Sun, Wind, Thermometer, LucideIcon, MapPin, Users, RefreshCw
 } from 'lucide-react'
 import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
 import { cityForAntenna } from '@/lib/weather-cities'
@@ -93,6 +93,12 @@ export default function DashboardPage() {
   
   const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
   const [selectedCity, setSelectedCity] = useState<CityWeatherDetail | null>(null)
+  const [aiPrediction, setAiPrediction] = useState<{
+    outlook: string
+    highRiskZones: { city: string; reason: string; severity: string }[]
+    recommendation: string
+  } | null>(null)
+  const [loadingAi, setLoadingAi] = useState(false)
   const [isAutoScrolling, setIsAutoScrolling] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -155,6 +161,26 @@ export default function DashboardPage() {
     }
   }, [user])
 
+  const fetchAiPrediction = useCallback(async (details: CityWeatherDetail[]) => {
+    if (details.length === 0 || loadingAi) return
+    setLoadingAi(true)
+    try {
+      const res = await fetch('/api/weather/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weatherDetails: details })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAiPrediction(data)
+      }
+    } catch (err) {
+      console.error('AI Prediction fetch failed', err)
+    } finally {
+      setLoadingAi(false)
+    }
+  }, [loadingAi])
+
   const fetchWeather = useCallback(async () => {
     try {
       const res = await fetch('/api/weather')
@@ -163,11 +189,17 @@ export default function DashboardPage() {
       if (Array.isArray(details)) {
         const sorted = [...details].sort((a, b) => riskRank[b.risk] - riskRank[a.risk])
         setWeatherDetails(sorted)
+        
+        // If we have high/medium risk weather and no prediction yet, fetch it
+        const hasRisk = details.some(d => d.risk !== 'low')
+        if (hasRisk && !aiPrediction) {
+          void fetchAiPrediction(details)
+        }
       }
     } catch {
       // non-critical — weather data stays empty on failure
     }
-  }, [])
+  }, [aiPrediction, fetchAiPrediction])
 
   useEffect(() => {
     if (!user) return
@@ -180,6 +212,25 @@ export default function DashboardPage() {
       clearInterval(id)
     }
   }, [user, fetchWeather])
+
+  // Periodic AI refresh (every 60 mins if risk exists)
+  useEffect(() => {
+    if (!user || weatherDetails.length === 0) return
+    const id = setInterval(() => {
+      if (weatherDetails.some(d => d.risk !== 'low')) {
+        void fetchAiPrediction(weatherDetails)
+      }
+    }, 60 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [user, weatherDetails, fetchAiPrediction])
+
+  const filteredIncidents = useMemo(() => {
+    const now = new Date()
+    const days = timeRange === '30d' ? 30 : timeRange === '3m' ? 90 : timeRange === '6m' ? 180 : 365
+    const threshold = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+    
+    return incidents.filter(i => new Date(i.submitDate) >= threshold)
+  }, [incidents, timeRange])
 
   const stats = useMemo(() => {
     const total = antennas.length
@@ -719,6 +770,91 @@ export default function DashboardPage() {
             </div>
           </DialogContent>
         </Dialog>
+        {/* AI Intelligence Report */}
+        {(aiPrediction || loadingAi) && (
+            <motion.div variants={itemVariants}>
+              <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--border-accent)] shadow-[var(--shadow-glow)] overflow-hidden relative min-h-[180px]">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-50" />
+                <CardHeader className="flex flex-row items-center justify-between pb-3">
+                  <div className="flex flex-col gap-1">
+                    <CardTitle className="text-[13px] font-medium text-[var(--accent-bright)] uppercase tracking-widest flex items-center gap-2">
+                      <Zap className="size-4 animate-pulse" />
+                      AI Network Intelligence
+                    </CardTitle>
+                    <p className="text-[10px] text-[var(--text-muted)] font-mono">Gemini · Predictive Outage Analysis</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {loadingAi ? (
+                        <div className="flex items-center gap-2 text-[10px] text-[var(--accent-bright)] font-mono animate-pulse">
+                          <Activity className="size-3" />
+                          ANALYZING...
+                        </div>
+                    ) : (
+                      <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => fetchAiPrediction(weatherDetails)}
+                        className="flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-md)] border border-[var(--border-accent)] bg-[var(--accent-dim)] text-[var(--accent-bright)] text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--accent)] hover:text-white transition-all cursor-pointer"
+                      >
+                        <RefreshCw className="size-3" />
+                        Retry
+                      </motion.button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loadingAi && !aiPrediction ? (
+                      <div className="py-12 flex flex-col items-center justify-center gap-4">
+                        <div className="flex items-center gap-1.5">
+                          {[1,2,3,4].map(i => (
+                              <motion.div
+                                  key={i}
+                                  animate={{ opacity: [0.3, 1, 0.3], scale: [0.9, 1.1, 0.9] }}
+                                  transition={{ duration: 1, repeat: Infinity, delay: i * 0.15 }}
+                                  className="size-1.5 bg-[var(--accent-bright)] rounded-full shadow-[0_0_8px_var(--accent)]"
+                              />
+                          ))}
+                        </div>
+                        <span className="text-[11px] font-mono text-[var(--text-muted)] uppercase tracking-widest animate-pulse">Consulting Gemini Expert...</span>
+                      </div>
+                  ) : aiPrediction && (
+                      <div className="space-y-5">
+                        <div className="bg-[var(--accent-dim)] p-4 rounded-[var(--radius-md)] border border-[var(--border-accent)]/30">
+                          <p className="text-[14px] text-[var(--text-primary)] leading-relaxed italic">
+                            {aiPrediction.outlook}
+                          </p>
+                        </div>
+
+                        {aiPrediction.highRiskZones.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {aiPrediction.highRiskZones.map((zone, i) => (
+                                  <div key={i} className="flex flex-col gap-1.5 p-3 rounded-[var(--radius-sm)] bg-black/20 border border-[var(--glass-border)]">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[12px] font-bold text-[var(--text-primary)]">{zone.city}</span>
+                                      <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-[var(--alarm-critical)]/20 text-[var(--alarm-critical)] border border-[var(--alarm-critical)]/30">
+                                {zone.severity}
+                              </span>
+                                    </div>
+                                    <p className="text-[11px] text-[var(--text-secondary)] leading-snug">
+                                      {zone.reason}
+                                    </p>
+                                  </div>
+                              ))}
+                            </div>
+                        )}
+
+                        <div className="flex items-start gap-3 pt-2 border-t border-[var(--glass-border)]">
+                          <ShieldAlert className="size-4 text-[var(--alarm-major)] shrink-0 mt-0.5" />
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-bold text-[var(--alarm-major)] uppercase tracking-widest">NOC Recommendation</span>
+                            <p className="text-[12px] text-[var(--text-primary)]">{aiPrediction.recommendation}</p>
+                          </div>
+                        </div>
+                      </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+        )}
 
         {/* Chronic Alarms */}
         <motion.div variants={itemVariants}>
@@ -809,6 +945,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </motion.div>
+        
 
         {/* System Logs / Recent Alerts */}
         <motion.div variants={itemVariants}>
