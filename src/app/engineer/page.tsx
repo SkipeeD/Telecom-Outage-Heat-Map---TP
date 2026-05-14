@@ -780,7 +780,7 @@ function ChatView({ incidents, loading, currentUid, currentName }: ChatViewProps
       },
       err => {
         setMsgLoading(false)
-        setMsgError(err.message)
+        setMsgError('Failed to load messages. Check your connection and try again.')
       }
     )
     return () => unsub()
@@ -814,7 +814,7 @@ function ChatView({ incidents, loading, currentUid, currentName }: ChatViewProps
     try {
       await sendChatMessage(selectedIncident.incidentNumber, text, currentUid, currentName)
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : 'Failed to send')
+      setSendError('Message failed to send. Check your connection and try again.')
       setDraft(text)
       setMessages(prev => prev.filter(msg => msg.id !== pendingId))
     } finally {

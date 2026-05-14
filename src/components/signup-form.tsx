@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { auth, db, googleProvider } from '@/lib/firebase'
 import { createUserWithEmailAndPassword, sendEmailVerification, signInWithPopup } from 'firebase/auth'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
-import { cn } from "@/lib/utils"
+import { cn, getAuthErrorMessage } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -81,8 +81,7 @@ export function SignupForm({
       await sendEmailVerification(user)
       router.push('/verify-email')
     } catch (err) {
-      const error = err as Error
-      setError(error.message || 'Failed to register account.')
+      setError(getAuthErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -104,11 +103,11 @@ export function SignupForm({
           role: 'user',
         })
       }
-      
+
       router.push('/map')
     } catch (err) {
-      const error = err as Error
-      setError(error.message || 'Failed to register with Google.')
+      const msg = getAuthErrorMessage(err)
+      if (msg) setError(msg)
     } finally {
       setLoading(false)
     }

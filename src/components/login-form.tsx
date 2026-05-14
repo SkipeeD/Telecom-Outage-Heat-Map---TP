@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth, googleProvider } from '@/lib/firebase'
 import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth'
-import { cn } from "@/lib/utils"
+import { cn, getAuthErrorMessage } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -63,8 +63,7 @@ export function LoginForm({
       }
       // Let AuthProvider handle the redirect to /map once profile is ready
     } catch (err) {
-      const error = err as Error
-      setError(error.message || 'Failed to login. Please check your credentials.')
+      setError(getAuthErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -77,8 +76,8 @@ export function LoginForm({
       await signInWithPopup(auth, googleProvider)
       // Let AuthProvider handle the redirect to /map once profile is ready
     } catch (err) {
-      const error = err as Error
-      setError(error.message || 'Failed to login with Google.')
+      const msg = getAuthErrorMessage(err)
+      if (msg) setError(msg)
     } finally {
       setLoading(false)
     }
