@@ -17,6 +17,7 @@ import {
   ArrowRight, Cloud, CloudRain, Sun, Wind, Thermometer, LucideIcon, MapPin, Users, RefreshCw
 } from 'lucide-react'
 import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
+import { cn } from '@/lib/utils'
 import { cityForAntenna } from '@/lib/weather-cities'
 import { Button } from '@/components/ui/button'
 import {
@@ -90,15 +91,17 @@ export default function DashboardPage() {
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
   const [incidents, setIncidents] = useState<Incident[]>([])
+  const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
   
   const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
   const [selectedCity, setSelectedCity] = useState<CityWeatherDetail | null>(null)
   const [aiPrediction, setAiPrediction] = useState<{
     outlook: string
-    highRiskZones: { city: string; reason: string; severity: string }[]
+    riskZones: { city: string; reason: string; severity: string; conditions?: string }[]
     recommendation: string
   } | null>(null)
   const [loadingAi, setLoadingAi] = useState(false)
+  const [aiError, setAiError] = useState(false)
   const [isAutoScrolling, setIsAutoScrolling] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -164,6 +167,7 @@ export default function DashboardPage() {
   const fetchAiPrediction = useCallback(async (details: CityWeatherDetail[]) => {
     if (details.length === 0 || loadingAi) return
     setLoadingAi(true)
+    setAiError(false)
     try {
       const res = await fetch('/api/weather/predict', {
         method: 'POST',
@@ -173,9 +177,12 @@ export default function DashboardPage() {
       if (res.ok) {
         const data = await res.json()
         setAiPrediction(data)
+      } else {
+        setAiError(true)
       }
     } catch (err) {
       console.error('AI Prediction fetch failed', err)
+      setAiError(true)
     } finally {
       setLoadingAi(false)
     }
@@ -190,9 +197,7 @@ export default function DashboardPage() {
         const sorted = [...details].sort((a, b) => riskRank[b.risk] - riskRank[a.risk])
         setWeatherDetails(sorted)
         
-        // If we have high/medium risk weather and no prediction yet, fetch it
-        const hasRisk = details.some(d => d.risk !== 'low')
-        if (hasRisk && !aiPrediction) {
+        if (!aiPrediction) {
           void fetchAiPrediction(details)
         }
       }
@@ -213,13 +218,11 @@ export default function DashboardPage() {
     }
   }, [user, fetchWeather])
 
-  // Periodic AI refresh (every 60 mins if risk exists)
+  // Periodic AI refresh (every 60 mins)
   useEffect(() => {
     if (!user || weatherDetails.length === 0) return
     const id = setInterval(() => {
-      if (weatherDetails.some(d => d.risk !== 'low')) {
-        void fetchAiPrediction(weatherDetails)
-      }
+      void fetchAiPrediction(weatherDetails)
     }, 60 * 60 * 1000)
     return () => clearInterval(id)
   }, [user, weatherDetails, fetchAiPrediction])
@@ -267,22 +270,48 @@ export default function DashboardPage() {
       color: techColorVar[t]
     }))
 
-    // Process resolved alarms for trend
-    const resolvedByDate: Record<string, number> = {}
-    resolvedAlarms.forEach(a => {
-      if (a.cancelTime) {
-        const date = new Date(a.cancelTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-        resolvedByDate[date] = (resolvedByDate[date] || 0) + 1
+    // Build date label for an ISO date string based on timeRange
+    const cutoff = (() => {
+      const d = new Date()
+      if (timeRange === '30d') d.setDate(d.getDate() - 30)
+      else if (timeRange === '3m') d.setMonth(d.getMonth() - 3)
+      else if (timeRange === '6m') d.setMonth(d.getMonth() - 6)
+      else d.setFullYear(d.getFullYear() - 1)
+      return d.getTime()
+    })()
+
+    const dateLabel = (iso: string) => {
+      const d = new Date(iso)
+      if (timeRange === '30d' || timeRange === '3m') return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      if (timeRange === '6m') {
+        const firstDay = new Date(d.getFullYear(), 0, 1)
+        const week = Math.ceil(((d.getTime() - firstDay.getTime()) / 86400000 + firstDay.getDay() + 1) / 7)
+        return `Wk ${week}`
+      }
+      return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    }
+
+    const dailyStats: Record<string, { ts: number; created: number; resolved: number }> = {}
+    incidents.forEach(i => {
+      const submitTs = new Date(i.submitDate).getTime()
+      if (submitTs < cutoff) return
+      const label = dateLabel(i.submitDate)
+      if (!dailyStats[label]) dailyStats[label] = { ts: submitTs, created: 0, resolved: 0 }
+      dailyStats[label].created++
+      if ((i.status === 'RESOLVED' || i.status === 'CLOSED') && (i.resolvedDate || i.closedDate)) {
+        const resLabel = dateLabel(i.resolvedDate || i.closedDate!)
+        if (!dailyStats[resLabel]) dailyStats[resLabel] = { ts: new Date(i.resolvedDate || i.closedDate!).getTime(), created: 0, resolved: 0 }
+        dailyStats[resLabel].resolved++
       }
     })
 
-    const resolvedChartData = Object.entries(resolvedByDate)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(-10)
+    const resolvedChartData = Object.entries(dailyStats)
+      .map(([date, { ts, created, resolved }]) => ({ date, ts, created, resolved }))
+      .sort((a, b) => a.ts - b.ts)
+      .map(({ date, created, resolved }) => ({ date, created, resolved }))
 
     return { total, alarms, ok, pieData, barData, resolvedChartData }
-  }, [antennas, resolvedAlarms])
+  }, [antennas, incidents, timeRange])
 
   const exportResolvedToExcel = () => {
     if (resolvedAlarms.length === 0) return
@@ -548,17 +577,43 @@ export default function DashboardPage() {
                   <History className="size-4 text-[var(--alarm-ok)]" />
                   Resolution Performance
                 </CardTitle>
-                <p className="text-[10px] text-[var(--text-muted)]">Alarms resolved per day</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {(['30d', '3m', '6m', '1y'] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setTimeRange(r)}
+                      className={cn(
+                        "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-tighter transition-all",
+                        timeRange === r
+                          ? "bg-[var(--accent)] text-white shadow-[0_0_8px_var(--accent)]"
+                          : "bg-[var(--glass-bg)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--glass-border)]"
+                      )}
+                    >
+                      {r === '30d' ? '30 Days' : r === '3m' ? '3 Months' : r === '6m' ? '6 Months' : '1 Year'}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={exportResolvedToExcel}
-                className="h-8 bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[10px] uppercase tracking-widest gap-2"
-              >
-                <Download className="size-3.5" />
-                Export Solved (CSV)
-              </Button>
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => router.push('/dashboard/engineers')}
+                  className="h-8 text-[var(--accent)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 text-[10px] uppercase tracking-widest gap-2 font-bold"
+                >
+                  <Users className="size-3.5" />
+                  Engineer Details
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={exportResolvedToExcel}
+                  className="h-8 bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[10px] uppercase tracking-widest gap-2"
+                >
+                  <Download className="size-3.5" />
+                  Export Report (CSV)
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="h-[240px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -568,17 +623,21 @@ export default function DashboardPage() {
                       <stop offset="5%" stopColor={getCSSVar('--alarm-ok')} stopOpacity={0.3}/>
                       <stop offset="95%" stopColor={getCSSVar('--alarm-ok')} stopOpacity={0}/>
                     </linearGradient>
+                    <linearGradient id="colorCreated" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={getCSSVar('--alarm-major')} stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor={getCSSVar('--alarm-major')} stopOpacity={0}/>
+                    </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={getCSSVar('--border')} />
-                  <XAxis 
-                    dataKey="date" 
-                    axisLine={false} 
-                    tickLine={false} 
+                  <XAxis
+                    dataKey="date"
+                    axisLine={false}
+                    tickLine={false}
                     tick={{ fill: getCSSVar('--text-muted'), fontSize: 9, fontFamily: 'var(--font-mono)' }}
                   />
-                  <YAxis 
-                    axisLine={false} 
-                    tickLine={false} 
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
                     tick={{ fill: getCSSVar('--text-muted'), fontSize: 9, fontFamily: 'var(--font-mono)' }}
                   />
                   <Tooltip
@@ -592,12 +651,21 @@ export default function DashboardPage() {
                     }}
                     itemStyle={{ color: '#ffffff' }}
                   />
-                  <Area 
-                    type="monotone" 
-                    dataKey="count" 
-                    stroke={getCSSVar('--alarm-ok')} 
-                    fillOpacity={1} 
-                    fill="url(#colorResolved)" 
+                  <Area
+                    type="monotone"
+                    dataKey="created"
+                    stroke={getCSSVar('--alarm-major')}
+                    fillOpacity={1}
+                    fill="url(#colorCreated)"
+                    strokeWidth={2}
+                    name="Incidents"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="resolved"
+                    stroke={getCSSVar('--alarm-ok')}
+                    fillOpacity={1}
+                    fill="url(#colorResolved)"
                     strokeWidth={2}
                     name="Resolved"
                   />
@@ -763,7 +831,7 @@ export default function DashboardPage() {
           </DialogContent>
         </Dialog>
         {/* AI Intelligence Report */}
-        {(aiPrediction || loadingAi) && (
+        {(weatherDetails.length > 0 || aiPrediction || loadingAi) && (
             <motion.div variants={itemVariants}>
               <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--border-accent)] shadow-[var(--shadow-glow)] overflow-hidden relative min-h-[180px]">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-50" />
@@ -794,7 +862,14 @@ export default function DashboardPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {loadingAi && !aiPrediction ? (
+                  {aiError && !loadingAi && !aiPrediction ? (
+                      <div className="py-10 flex flex-col items-center justify-center gap-3">
+                        <ShieldAlert className="size-6 text-[var(--alarm-major)]" />
+                        <p className="text-[12px] font-mono text-[var(--text-muted)] text-center">
+                          AI analysis unavailable. Check your API key or network connection.
+                        </p>
+                      </div>
+                  ) : loadingAi && !aiPrediction ? (
                       <div className="py-12 flex flex-col items-center justify-center gap-4">
                         <div className="flex items-center gap-1.5">
                           {[1,2,3,4].map(i => (
@@ -816,9 +891,9 @@ export default function DashboardPage() {
                           </p>
                         </div>
 
-                        {aiPrediction.highRiskZones.length > 0 && (
+                        {aiPrediction.riskZones.length > 0 && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {aiPrediction.highRiskZones.map((zone, i) => (
+                              {aiPrediction.riskZones.map((zone, i) => (
                                   <div key={i} className="flex flex-col gap-1.5 p-3 rounded-[var(--radius-sm)] bg-black/20 border border-[var(--glass-border)]">
                                     <div className="flex items-center justify-between">
                                       <span className="text-[12px] font-bold text-[var(--text-primary)]">{zone.city}</span>

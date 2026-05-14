@@ -254,6 +254,14 @@ html, body {
   outline: 1px solid transparent;
 }
 
+svg:focus,
+svg *:focus,
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus,
+.recharts-wrapper div:focus {
+  outline: none;
+}
+
 .leaflet-container img.leaflet-tile {
   /* Some browsers need this to prevent tiny gaps */
   box-shadow: 0 0 1px transparent;

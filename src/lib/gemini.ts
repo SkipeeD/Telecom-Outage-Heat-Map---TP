@@ -56,7 +56,7 @@ Current Weather Data for investigation:
 ${JSON.stringify(relevantData)}
 
 Analyze this data and return the outage prediction in the specified JSON format.
-If no cities are at risk, return an empty highRiskZones array but still provide an outlook.
+If no cities are at risk, return an empty riskZones array but still provide an outlook.
 `
 
   const result = await model.generateContent([SYSTEM_PROMPT, prompt])
