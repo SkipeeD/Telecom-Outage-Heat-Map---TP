@@ -442,7 +442,8 @@ function GroupIncidentModal({ incident, incidents, open, onClose, onGroup }: Gro
       <button
         aria-label="Close grouping modal"
         onClick={onClose}
-        className="absolute inset-0 bg-[rgba(4,4,12,0.65)] backdrop-blur-[3px]"
+        className="absolute inset-0 backdrop-blur-[3px]"
+        style={{ background: 'color-mix(in srgb, var(--bg-base) 65%, transparent)' }}
       />
       <motion.div
         role="dialog"

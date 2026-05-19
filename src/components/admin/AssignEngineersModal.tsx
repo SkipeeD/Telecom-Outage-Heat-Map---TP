@@ -94,7 +94,8 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
             exit={{ opacity: 0 }}
             transition={{ duration: shouldReduce ? 0 : 0.18 }}
             onClick={onClose}
-            className="fixed inset-0 bg-[rgba(4,4,12,0.65)] backdrop-blur-[3px] z-[9990]"
+            className="fixed inset-0 backdrop-blur-[3px] z-[9990]"
+            style={{ background: 'color-mix(in srgb, var(--bg-base) 65%, transparent)' }}
             aria-hidden
           />
 
@@ -239,7 +240,7 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
                           className="w-[18px] h-[18px] rounded-[5px] flex items-center justify-center shrink-0 transition-all duration-150"
                           style={{
                             background: checked ? 'var(--accent)' : 'transparent',
-                            border:     `1.5px solid ${checked ? 'var(--accent)' : 'rgba(255,255,255,0.15)'}`,
+                            border:     `1.5px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
                             boxShadow:  checked ? '0 0 8px var(--accent-glow)' : 'none',
                           }}
                         >
