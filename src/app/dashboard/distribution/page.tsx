@@ -255,7 +255,7 @@ function DistributionContent() {
                 </Button>
 
                 {item.incident ? (
-                  <div className="bg-black/20 rounded-[var(--radius-md)] p-3 border border-[var(--glass-border)] space-y-2 group-hover:border-[var(--accent)]/30 transition-colors">
+                  <div className="bg-[var(--bg-subtle)] rounded-[var(--radius-md)] p-3 border border-[var(--glass-border)] space-y-2 group-hover:border-[var(--accent)]/30 transition-colors">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-[var(--accent)] font-mono">{item.incident.incidentNumber}</span>
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase border
