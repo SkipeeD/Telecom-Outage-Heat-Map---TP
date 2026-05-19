@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 
-import { subscribeToIncidents } from '@/lib/firestore'
+import { getAllIncidents } from '@/lib/firestore'
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 
@@ -37,13 +37,20 @@ function EngineerContent() {
    */
   useEffect(() => {
     if (!user) return
-    
-    const unsubscribe = subscribeToIncidents((data) => {
-      setIncidents(data)
-      setLoading(false)
-    })
+    let cancelled = false
 
-    return () => unsubscribe()
+    const fetchIncidents = async () => {
+      try {
+        const data = await getAllIncidents()
+        if (cancelled) return
+        setIncidents(data)
+        setLoading(false)
+      } catch { /* retry on next interval */ }
+    }
+
+    void fetchIncidents()
+    const id = setInterval(() => void fetchIncidents(), 10_000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [user])
 
   const engineers = useMemo(() => {

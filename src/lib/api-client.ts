@@ -1,0 +1,25 @@
+import { auth } from './firebase'
+
+export async function apiFetch<T = unknown>(path: string, options?: RequestInit): Promise<T> {
+  const idToken = await auth.currentUser?.getIdToken()
+  if (!idToken) throw new Error('Not authenticated')
+
+  const hasBody = options?.body !== undefined
+  const isFormData = hasBody && options?.body instanceof FormData
+
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      ...(hasBody && !isFormData ? { 'Content-Type': 'application/json' } : {}),
+      ...options?.headers,
+    },
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(data.error ?? `API error ${res.status}`)
+  }
+
+  return res.json() as Promise<T>
+}

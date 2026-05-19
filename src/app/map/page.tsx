@@ -6,7 +6,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { motion } from 'motion/react'
-import { subscribeToAntennas } from '@/lib/firestore'
+import { getAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useFilters, FilterSeverity } from '@/components/FilterProvider'
 import type { Antenna, AlarmSeverity, Technology } from '@/types'
@@ -56,30 +56,28 @@ function MapPageInner() {
 
   useEffect(() => {
     if (!user) return
+    let cancelled = false
 
-    const unsubscribe = subscribeToAntennas((data) => {
-      setAntennas(data)
-      
-      const newCounts: Record<FilterSeverity, number> = {
-        all: 0,
-        critical: 0,
-        major: 0,
-        minor: 0,
-        warning: 0,
-        ok: 0
+    const fetchAntennas = async () => {
+      try {
+        const data = await getAntennas()
+        if (cancelled) return
+        setAntennas(data)
+        const newCounts: Record<FilterSeverity, number> = { all: 0, critical: 0, major: 0, minor: 0, warning: 0, ok: 0 }
+        data.forEach(antenna => {
+          const status = getWorstStatus(antenna)
+          if (newCounts[status] !== undefined) newCounts[status]++
+          newCounts.all++
+        })
+        setCounts(newCounts)
+      } catch {
+        // silently retry
       }
-      
-      data.forEach(antenna => {
-        const status = getWorstStatus(antenna)
-        if (newCounts[status] !== undefined) {
-          newCounts[status]++
-        }
-        newCounts.all++
-      })
-      
-      setCounts(newCounts)
-    })
-    return () => unsubscribe()
+    }
+
+    void fetchAntennas()
+    const id = setInterval(() => void fetchAntennas(), 30_000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [user, setCounts])
 
   useEffect(() => {

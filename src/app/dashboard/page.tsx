@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
-import { incidentMatchesAlarm, subscribeToAntennas } from '@/lib/firestore'
+import { incidentMatchesAlarm, getAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary, Incident } from '@/types'
@@ -127,8 +127,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return
-    const unsubAntennas = subscribeToAntennas(setAntennas)
-    return () => unsubAntennas()
+    let cancelled = false
+    const fetchAntennas = async () => {
+      try {
+        const data = await getAntennas()
+        if (!cancelled) setAntennas(data)
+      } catch { /* retry on next interval */ }
+    }
+    void fetchAntennas()
+    const id = setInterval(() => void fetchAntennas(), 30_000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [user])
 
   useEffect(() => {
