@@ -140,11 +140,11 @@ export function WeatherOverlay({ enabled, details }: WeatherOverlayProps) {
                 flex items-center gap-2
                 px-2.5 py-1.5
                 rounded-[var(--radius-md)] border border-[var(--glass-border)]
-                bg-[rgba(14,14,26,0.78)] backdrop-blur-xl
+                backdrop-blur-xl
                 shadow-[var(--shadow-md)]
                 hover:border-[var(--border-strong)] cursor-pointer
               "
-              style={{ left: pos.x, top: pos.y, color: WX_COLOR[detail.condition] }}
+              style={{ left: pos.x, top: pos.y, color: WX_COLOR[detail.condition], background: 'color-mix(in srgb, var(--bg-overlay) 88%, transparent)' }}
               aria-label={`Show weather for ${detail.city}`}
             >
               <ConditionIcon condition={detail.condition} className="size-[18px]" />
@@ -160,7 +160,8 @@ export function WeatherOverlay({ enabled, details }: WeatherOverlayProps) {
               </div>
               <span
                 className="absolute left-1/2 top-full -translate-x-1/2 size-0
-                  border-[5px] border-transparent border-t-[rgba(14,14,26,0.78)]"
+                  border-[5px] border-transparent"
+                style={{ borderTopColor: 'color-mix(in srgb, var(--bg-overlay) 88%, transparent)' }}
                 aria-hidden
               />
             </motion.button>
@@ -239,10 +240,10 @@ function FocusedCard({ detail, anchor, mapWidth, mapHeight, onClose }: FocusedCa
       className="
         pointer-events-auto absolute overflow-hidden
         rounded-[var(--radius-lg)] border border-[var(--glass-border)]
-        bg-[rgba(14,14,26,0.62)] backdrop-blur-2xl backdrop-saturate-150
+        backdrop-blur-2xl backdrop-saturate-150
         shadow-[var(--shadow-lg)] text-[var(--text-primary)]
       "
-      style={{ left: left + drag.dx, top: top + drag.dy, width: cardW, ['--wx-color' as string]: wxColor, ['--impact-color' as string]: impactColor }}
+      style={{ left: left + drag.dx, top: top + drag.dy, width: cardW, background: 'color-mix(in srgb, var(--bg-overlay) 85%, transparent)', ['--wx-color' as string]: wxColor, ['--impact-color' as string]: impactColor }}
     >
       {/* Header (drag handle) */}
       <div
@@ -369,7 +370,7 @@ function FocusedCard({ detail, anchor, mapWidth, mapHeight, onClose }: FocusedCa
       <div
         className="
           flex justify-between items-center px-3.5 py-2.5
-          border-t border-[var(--glass-border)] bg-[rgba(8,8,16,0.4)]
+          border-t border-[var(--glass-border)] bg-[var(--glass-bg)]
           font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]
         "
       >

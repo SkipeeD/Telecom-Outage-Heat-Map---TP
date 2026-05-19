@@ -19,12 +19,10 @@ export function WeatherOverlayToggle({ enabled, onToggle }: WeatherOverlayToggle
         px-3 py-2
         rounded-[var(--radius-full)] border
         border-[var(--glass-border)]
-        bg-[rgba(14,14,26,0.42)]
         backdrop-blur-2xl backdrop-saturate-150
-        shadow-[var(--shadow-lg)]
-        ring-1 ring-inset ring-white/5
+        shadow-[var(--shadow-md)]
       "
-      style={{ zIndex: 9990 }}
+      style={{ background: 'color-mix(in srgb, var(--bg-overlay) 70%, transparent)', zIndex: 9990 }}
     >
       <div className="relative flex items-center justify-center w-4 h-4">
         <AnimatePresence mode="wait">

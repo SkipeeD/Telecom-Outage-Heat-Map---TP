@@ -208,7 +208,8 @@ export function AntennaDetailsPanel({ antenna, allAntennas, initialTech, open, o
             {...backdropVariants}
             transition={FADE}
             onClick={onClose}
-            className="fixed inset-0 bg-[rgba(8,8,16,0.4)] backdrop-blur-[2px] z-[9998]"
+            className="fixed inset-0 backdrop-blur-[2px] z-[9998]"
+            style={{ background: 'color-mix(in srgb, var(--bg-base) 50%, transparent)' }}
             aria-hidden
           />
 
@@ -219,12 +220,11 @@ export function AntennaDetailsPanel({ antenna, allAntennas, initialTech, open, o
             transition={shouldReduce ? { duration: 0 } : SPRING}
             role="dialog"
             aria-label={`${antenna.name} details`}
-            style={{ width: 500 }}
+            style={{ width: 500, background: 'color-mix(in srgb, var(--bg-surface) 94%, transparent)', backdropFilter: 'blur(32px) saturate(260%)' }}
             className="
               fixed top-0 right-0 h-full z-[9999] flex flex-col
-              bg-[rgba(9,9,20,0.76)] backdrop-blur-[32px] backdrop-saturate-[260%] backdrop-brightness-[0.82]
-              border-l border-[rgba(255,255,255,0.09)]
-              shadow-[-8px_0_48px_rgba(0,0,0,0.6)]
+              border-l border-[var(--glass-border)]
+              shadow-[var(--shadow-lg)]
             "
           >
             {/* ── Header ─────────────────────────────────────────────── */}
@@ -315,7 +315,7 @@ export function AntennaDetailsPanel({ antenna, allAntennas, initialTech, open, o
             </div>
 
             {/* ── Cell switcher bar ──────────────────────────────────── */}
-            <div className="shrink-0 flex gap-1.5 px-4 py-2 bg-black/10">
+            <div className="shrink-0 flex gap-1.5 px-4 py-2 bg-[var(--glass-bg)]">
               {TECHS.map(t => {
                 const c = antenna.cells.find(cell => cell.technology === t)
                 const isActive   = activeTech === t
@@ -403,7 +403,7 @@ export function AntennaDetailsPanel({ antenna, allAntennas, initialTech, open, o
 
             {/* ── Footer ───────────────────────────────────────────── */}
             {(canAck || canInc) && (
-              <div className="shrink-0 flex gap-2 px-6 py-3 border-t border-[var(--glass-border)] bg-black/15">
+              <div className="shrink-0 flex gap-2 px-6 py-3 border-t border-[var(--glass-border)] bg-[var(--glass-bg)]">
                 {canAck && (
                   <Button
                     onClick={handleAcknowledge}
@@ -809,7 +809,7 @@ function IncidentsTab({
 
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
                       {(inc.siteIds?.length ? inc.siteIds : [inc.siteId]).map(s => (
-                        <span key={s} className="font-mono text-[9px] text-[var(--text-muted)] px-1.5 py-0.5 rounded-[var(--radius-full)] border border-[var(--glass-border)] bg-black/10">{s}</span>
+                        <span key={s} className="font-mono text-[9px] text-[var(--text-muted)] px-1.5 py-0.5 rounded-[var(--radius-full)] border border-[var(--glass-border)] bg-[var(--bg-subtle)]">{s}</span>
                       ))}
                       {(inc.technologies?.length ? inc.technologies : [inc.technology]).map(t => (
                         <span key={t} className="font-mono text-[9px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-full)]" style={{ color: 'var(--accent-bright)', background: 'var(--accent-dim)', border: '1px solid var(--border-accent)' }}>{t}</span>

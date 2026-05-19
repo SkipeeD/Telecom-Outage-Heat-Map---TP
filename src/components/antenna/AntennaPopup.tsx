@@ -204,14 +204,14 @@ export function AntennaPopup({
             maxHeight: 'calc(100vh - 24px)',
             zIndex: 9999,
             transformOrigin: `${pos?.arrowX ?? POPUP_WIDTH / 2}px ${pos?.placement === 'top' ? '100%' : '0%'}`,
+            background: 'color-mix(in srgb, var(--bg-overlay) 90%, transparent)',
           }}
           className="
             flex flex-col overflow-hidden
             rounded-[var(--radius-lg)]
-            border border-[rgba(255,255,255,0.1)]
-            shadow-[0_8px_40px_rgba(0,0,0,0.7),0_2px_8px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.07)]
-            bg-[rgba(15,15,30,0.50)]
-            backdrop-blur-2xl backdrop-saturate-[280%] backdrop-brightness-[0.85]
+            border border-[var(--glass-border)]
+            shadow-[var(--shadow-lg)]
+            backdrop-blur-2xl backdrop-saturate-[280%]
             cursor-grab active:cursor-grabbing
           "
         >
@@ -219,8 +219,9 @@ export function AntennaPopup({
           {pos && (
             <span
               aria-hidden
-              className="absolute w-3.5 h-3.5 rotate-45 bg-[rgba(15,15,30,0.50)] backdrop-blur-2xl"
+              className="absolute w-3.5 h-3.5 rotate-45 backdrop-blur-2xl"
               style={{
+                background: 'color-mix(in srgb, var(--bg-overlay) 90%, transparent)',
                 left: pos.arrowX - 7,
                 top: pos.placement === 'bottom' ? -8 : undefined,
                 bottom: pos.placement === 'top' ? -8 : undefined,
@@ -339,7 +340,7 @@ export function AntennaPopup({
           </div>
 
           {/* Footer */}
-          <div className="flex gap-2 px-4 py-3 border-t border-[var(--glass-border)] bg-black/10 shrink-0 cursor-default">
+          <div className="flex gap-2 px-4 py-3 border-t border-[var(--glass-border)] bg-[var(--glass-bg)] shrink-0 cursor-default">
             {canAck && (
               <Button
                 onClick={handleAcknowledge}

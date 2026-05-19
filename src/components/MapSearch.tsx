@@ -83,12 +83,12 @@ export function MapSearch({ antennas, onSelect }: Props) {
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
         className="relative flex items-center justify-center h-10 rounded-[var(--radius-full)]
           backdrop-blur-xl backdrop-saturate-[280%]
-          border shadow-[0_0_18px_rgba(124,111,247,0.25),0_4px_24px_rgba(0,0,0,0.55)]
+          border shadow-[0_0_18px_rgba(124,111,247,0.25),var(--shadow-md)]
           overflow-hidden"
         style={{
           background: expanded
-            ? 'rgba(14,12,38,0.88)'
-            : 'linear-gradient(135deg, rgba(124,111,247,0.18) 0%, rgba(9,9,28,0.88) 100%)',
+            ? 'color-mix(in srgb, var(--bg-overlay) 90%, transparent)'
+            : 'color-mix(in srgb, var(--accent) 12%, var(--bg-overlay))',
           borderColor: expanded ? 'rgba(124,111,247,0.25)' : 'rgba(124,111,247,0.45)',
         }}
       >
@@ -135,9 +135,10 @@ export function MapSearch({ antennas, onSelect }: Props) {
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] as const }}
             className="w-[280px] rounded-[var(--radius-lg)] overflow-hidden
-              bg-[rgba(9,9,20,0.94)] backdrop-blur-xl
-              border border-[rgba(255,255,255,0.1)]
-              shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
+              backdrop-blur-xl
+              border border-[var(--glass-border)]
+              shadow-[var(--shadow-lg)]"
+            style={{ background: 'color-mix(in srgb, var(--bg-overlay) 94%, transparent)' }}
           >
             <div className="max-h-[260px] overflow-y-auto scrollbar-hide">
             {results.map((r, i) => (

@@ -6,6 +6,7 @@ export function useTheme() {
     return (localStorage.getItem('theme') as 'dark' | 'light') ?? 'dark'
   })
 
+  // Apply class + persist when this instance owns a toggle
   useEffect(() => {
     const root = document.documentElement
     if (theme === 'dark') {
@@ -15,6 +16,16 @@ export function useTheme() {
     }
     localStorage.setItem('theme', theme)
   }, [theme])
+
+  // Stay in sync when another useTheme instance toggles the DOM class
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const current = document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+      setTheme(prev => prev === current ? prev : current)
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
 
   const toggle = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
 
