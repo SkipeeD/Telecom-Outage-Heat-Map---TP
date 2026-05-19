@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'motion/react'
+import { motion, AnimatePresence } from 'motion/react'
 import { useAuth } from '@/components/AuthProvider'
 import type { Incident, IncidentAssignee } from '@/types'
-import { ArrowLeft, Clock, Users, Search, Filter, Calendar } from 'lucide-react'
+import { ArrowLeft, Clock, Users, Search, Filter, Calendar, ChevronDown } from 'lucide-react'
 import { relTime } from '@/lib/antenna-helpers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +28,7 @@ function EngineerContent() {
   const [search, setSearch] = useState('')
   const [selectedEngineer, setSelectedEngineer] = useState<string | 'ALL'>('ALL')
   const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
   /* 
    * Real-time Sync Fix:
@@ -149,37 +150,71 @@ function EngineerContent() {
               />
             </div>
             
-            <div className="flex gap-1.5 p-1 bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] shrink-0 overflow-x-auto no-scrollbar max-w-full md:max-w-md">
+            <div className="relative shrink-0">
               <button
-                onClick={() => setSelectedEngineer('ALL')}
-                className={cn(
-                  "px-4 py-2 rounded-[var(--radius-md)] text-[11px] font-medium uppercase tracking-widest transition-all duration-200 shrink-0",
-                  selectedEngineer === 'ALL'
-                    ? "bg-[var(--accent)] text-white shadow-[var(--shadow-glow)]"
-                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)]"
-                )}
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="flex items-center justify-between w-full md:w-64 px-4 h-11 bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] text-[11px] font-medium uppercase tracking-widest transition-all hover:bg-[var(--glass-hover)]"
               >
-                All Engineers
+                <span className="flex items-center gap-2">
+                  <Users className="size-4 text-[var(--accent)]" />
+                  {selectedEngineer === 'ALL' ? 'All Engineers' : engineers.find(e => e.uid === selectedEngineer)?.displayName || engineers.find(e => e.uid === selectedEngineer)?.email.split('@')[0] || 'Unknown'}
+                </span>
+                <ChevronDown className={cn("size-4 transition-transform duration-200", isDropdownOpen && "rotate-180")} />
               </button>
-              {engineers.map(eng => {
-                const isActive = selectedEngineer === eng.uid
-                const label = eng.displayName || eng.email.split('@')[0]
-                
-                return (
-                  <button
-                    key={eng.uid}
-                    onClick={() => setSelectedEngineer(eng.uid)}
-                    className={cn(
-                      "px-4 py-2 rounded-[var(--radius-md)] text-[11px] font-medium uppercase tracking-widest transition-all duration-200 shrink-0",
-                      isActive 
-                        ? "bg-[var(--alarm-ok)] text-white shadow-[0_0_14px_rgba(52,211,153,0.3)]" 
-                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)]"
-                    )}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
+
+              <AnimatePresence>
+                {isDropdownOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setIsDropdownOpen(false)} 
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                      transition={{ duration: 0.15, ease: 'easeOut' }}
+                      className="absolute left-0 right-0 md:right-auto md:w-64 mt-2 py-2 bg-[var(--bg-surface)] backdrop-blur-xl border border-[var(--glass-border)] rounded-[var(--radius-lg)] shadow-2xl z-20 overflow-hidden max-h-[300px] overflow-y-auto"
+                    >
+                      <button
+                        onClick={() => {
+                          setSelectedEngineer('ALL')
+                          setIsDropdownOpen(false)
+                        }}
+                        className={cn(
+                          "w-full text-left px-4 py-3 text-[11px] font-medium uppercase tracking-widest transition-colors",
+                          selectedEngineer === 'ALL'
+                            ? "bg-[var(--accent)] text-white"
+                            : "text-[var(--text-secondary)] hover:bg-[var(--glass-hover)] hover:text-[var(--text-primary)]"
+                        )}
+                      >
+                        All Engineers
+                      </button>
+                      {engineers.map(eng => {
+                        const isActive = selectedEngineer === eng.uid
+                        const label = eng.displayName || eng.email.split('@')[0]
+                        return (
+                          <button
+                            key={eng.uid}
+                            onClick={() => {
+                              setSelectedEngineer(eng.uid)
+                              setIsDropdownOpen(false)
+                            }}
+                            className={cn(
+                              "w-full text-left px-4 py-3 text-[11px] font-medium uppercase tracking-widest transition-colors",
+                              isActive
+                                ? "bg-[var(--alarm-ok)] text-white"
+                                : "text-[var(--text-secondary)] hover:bg-[var(--glass-hover)] hover:text-[var(--text-primary)]"
+                            )}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
@@ -259,7 +294,7 @@ function EngineerContent() {
                     </div>
 
                     <div className="md:w-64 shrink-0 flex flex-col gap-4">
-                      <div className="bg-black/20 rounded-[var(--radius-md)] p-4 border border-[var(--glass-border)] group-hover:border-[var(--accent)]/30 transition-colors">
+                      <div className="bg-[var(--bg-subtle)] rounded-[var(--radius-md)] p-4 border border-[var(--glass-border)] group-hover:border-[var(--accent)]/30 transition-colors">
                         <div className="flex items-center justify-between mb-3">
                            <div className="flex items-center gap-2">
                             <Users className="size-3.5 text-[var(--alarm-ok)]" />

@@ -700,7 +700,7 @@ function IncidentsView({ incidents, loading, selectedIncidentNumber, onSelect, p
               </div>
             ) : (
               <div>
-                <div className="px-4 py-3 border-b border-[var(--glass-border)] bg-black/10">
+                <div className="px-4 py-3 border-b border-[var(--glass-border)] bg-[var(--glass-bg)]">
                   <div className="font-mono text-[12px] font-bold text-[var(--text-primary)]">{selectedIncident.incidentNumber}</div>
                   <div className="mt-1 text-[10px] font-mono text-[var(--text-muted)] truncate">
                     {incSites(selectedIncident)} · {incTechs(selectedIncident)}

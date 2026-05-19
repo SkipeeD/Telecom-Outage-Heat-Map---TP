@@ -94,7 +94,8 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
             exit={{ opacity: 0 }}
             transition={{ duration: shouldReduce ? 0 : 0.18 }}
             onClick={onClose}
-            className="fixed inset-0 bg-[rgba(4,4,12,0.65)] backdrop-blur-[3px] z-[9990]"
+            className="fixed inset-0 backdrop-blur-[3px] z-[9990]"
+            style={{ background: 'color-mix(in srgb, var(--bg-base) 65%, transparent)' }}
             aria-hidden
           />
 
@@ -112,14 +113,15 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
               fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
               z-[9991] flex flex-col w-[480px] max-w-[calc(100vw-32px)] max-h-[80vh]
               rounded-[var(--radius-lg)]
-              bg-[rgba(9,9,20,0.94)] backdrop-blur-[40px] backdrop-saturate-[300%] backdrop-brightness-[0.85]
-              border border-[rgba(255,255,255,0.10)]
-              shadow-[0_32px_80px_rgba(0,0,0,0.85),0_8px_24px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.07)]
+              bg-[var(--bg-overlay)] backdrop-blur-[40px]
+              border border-[var(--glass-border)]
+              shadow-[var(--shadow-lg)]
               overflow-hidden
             "
+
           >
             {/* ── Header ── */}
-            <div className="shrink-0 px-5 pt-5 pb-4 border-b border-[rgba(255,255,255,0.07)]">
+            <div className="shrink-0 px-5 pt-5 pb-4 border-b border-[var(--glass-border)]">
               <div className="flex items-start justify-between gap-3 mb-3.5">
                 <div>
                   <div className="text-[16px] font-semibold text-[var(--text-primary)] leading-snug">
@@ -238,7 +240,7 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
                           className="w-[18px] h-[18px] rounded-[5px] flex items-center justify-center shrink-0 transition-all duration-150"
                           style={{
                             background: checked ? 'var(--accent)' : 'transparent',
-                            border:     `1.5px solid ${checked ? 'var(--accent)' : 'rgba(255,255,255,0.15)'}`,
+                            border:     `1.5px solid ${checked ? 'var(--accent)' : 'var(--border-strong)'}`,
                             boxShadow:  checked ? '0 0 8px var(--accent-glow)' : 'none',
                           }}
                         >
@@ -256,7 +258,7 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
             </div>
 
             {/* ── Footer ── */}
-            <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-4 border-t border-[rgba(255,255,255,0.07)] bg-black/15">
+            <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-4 border-t border-[var(--glass-border)] bg-[var(--glass-bg)]">
               <span className="font-mono text-[11px] text-[var(--text-muted)]">
                 {pendingUids.size === 0
                   ? 'No engineers selected'

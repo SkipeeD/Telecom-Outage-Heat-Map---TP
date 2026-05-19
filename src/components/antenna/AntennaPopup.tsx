@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/components/AuthProvider'
 import { acknowledgeAssignedIncidents, getIncidentsForSite } from '@/lib/firestore'
 import type { Incident } from '@/types'
+import { MapPin } from 'lucide-react'
 
 const POPUP_WIDTH = 360
 const GAP = 12
@@ -332,9 +333,16 @@ export function AntennaPopup({
               </div>
 
               {/* Meta */}
-              <div className="grid grid-cols-2 gap-x-3.5 gap-y-2.5 py-3 border-t border-[var(--glass-border)]">
-                <MetaItem k="Latitude" v={`${antenna.latitude.toFixed(4)}°`} />
-                <MetaItem k="Longitude" v={`${antenna.longitude.toFixed(4)}°`} />
+              <div className="py-2 border-t border-[var(--glass-border)]">
+                <a 
+                  href={`https://www.google.com/maps/search/?api=1&query=${antenna.latitude},${antenna.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--accent)] text-white hover:bg-[var(--accent-bright)] transition-all shadow-[var(--shadow-glow)] text-[10px] font-bold uppercase tracking-widest"
+                >
+                  <MapPin className="size-3.5" />
+                  Google Maps
+                </a>
               </div>
             </div>
           </div>
@@ -390,17 +398,6 @@ function SectionLabel({
           {right}
         </span>
       ) : null}
-    </div>
-  )
-}
-
-function MetaItem({ k, v }: { k: string; v: string }) {
-  return (
-    <div>
-      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)] mb-0.5">
-        {k}
-      </div>
-      <div className="font-mono text-[12px] text-[var(--text-primary)]">{v}</div>
     </div>
   )
 }

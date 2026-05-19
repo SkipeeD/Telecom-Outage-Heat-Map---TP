@@ -208,7 +208,7 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
                       {marker.worstStatus.toUpperCase()}
                     </span>
                     {extraAlarmCount > 0 && (
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.1)] text-[var(--text-primary)]">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-[var(--border)] bg-[var(--glass-hover)] text-[var(--text-primary)]">
                         +{extraAlarmCount} alarm{extraAlarmCount > 1 ? 's' : ''}
                       </span>
                     )}

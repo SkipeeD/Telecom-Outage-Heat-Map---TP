@@ -17,6 +17,7 @@ import { acknowledgeAssignedIncidents, createIncidentForAlarm, getAlarmsForAnten
 import { useAuth } from '@/components/AuthProvider'
 import { canAssignEngineers, canCreateIncident } from '@/lib/roles'
 import { AssignEngineersModal } from '@/components/admin/AssignEngineersModal'
+import { MapPin } from 'lucide-react'
 
 // Evaluated once at module load — safe to use in render (avoids react-hooks/purity violation)
 const MODULE_NOW_MS = Date.now()
@@ -580,8 +581,19 @@ function OverviewTab({ antenna, cell, activeTech, alarmHistory, incidents, loadi
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-4 border-t border-[var(--glass-border)]">
         <MetaItem k="Technology"  v={activeTech} />
         <MetaItem k="Status"      v={cell?.status ?? 'N/A'} mono={false} />
-        <MetaItem k="Latitude"    v={`${antenna.latitude.toFixed(5)}°`} />
-        <MetaItem k="Longitude"   v={`${antenna.longitude.toFixed(5)}°`} />
+        
+        <div className="col-span-2 pt-2">
+          <a 
+            href={`https://www.google.com/maps/search/?api=1&query=${antenna.latitude},${antenna.longitude}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-[var(--radius-md)] bg-[var(--accent)] text-white hover:bg-[var(--accent-bright)] transition-all shadow-[var(--shadow-glow)] text-[11px] font-bold uppercase tracking-widest"
+          >
+            <MapPin className="size-4" />
+            Google Maps
+          </a>
+        </div>
+
         <MetaItem k="Site ID"     v={antenna.siteId} />
         <MetaItem k="Provider"    v={antenna.provider} mono={false} />
       </div>

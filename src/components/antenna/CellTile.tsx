@@ -48,7 +48,7 @@ export function CellTile({ tech, cell, selected, onSelect }: Props) {
         'relative rounded-[var(--radius-md)] border px-[6px] py-[10px] pb-2 text-center cursor-pointer select-none',
         'transition-all duration-200',
         selected
-          ? 'bg-[rgba(255,255,255,0.08)] border-[rgba(255,255,255,0.18)] scale-[1.06]'
+          ? 'bg-[var(--glass-hover)] border-[var(--border-strong)] scale-[1.06]'
           : 'bg-[var(--glass-bg)] border-[var(--glass-border)] hover:bg-[var(--glass-hover)] hover:border-[var(--border-strong)]'
       )}
     >
