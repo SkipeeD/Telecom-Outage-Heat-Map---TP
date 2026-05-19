@@ -48,7 +48,7 @@ export function ThemeToggle() {
         aria-label="Toggle theme"
         className={cn(
           "shadow-none border-none focus-visible:ring-0",
-          "dark:data-[state=unchecked]:bg-slate-800/60" // Subtle background for the track in dark mode
+          "data-[state=unchecked]:bg-[var(--bg-subtle)]"
         )}
       />
 

@@ -645,11 +645,11 @@ export default function DashboardPage() {
                       background: getCSSVar('--bg-overlay'),
                       border: `1px solid ${getCSSVar('--glass-border')}`,
                       borderRadius: 'var(--radius-md)',
-                      color: '#ffffff',
+                      color: getCSSVar('--text-primary'),
                       fontSize: '11px',
                       fontFamily: 'var(--font-mono)',
                     }}
-                    itemStyle={{ color: '#ffffff' }}
+                    itemStyle={{ color: getCSSVar('--text-primary') }}
                   />
                   <Area
                     type="monotone"

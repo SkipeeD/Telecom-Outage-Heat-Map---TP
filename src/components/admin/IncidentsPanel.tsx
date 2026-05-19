@@ -454,8 +454,8 @@ function GroupIncidentModal({ incident, incidents, open, onClose, onGroup }: Gro
         transition={{ duration: 0.2, ease: EASE }}
         className="
           relative z-[9991] w-[420px] max-w-full rounded-[var(--radius-lg)]
-          bg-[rgba(9,9,20,0.96)] backdrop-blur-[36px]
-          border border-[rgba(255,255,255,0.10)] shadow-[var(--shadow-lg)]
+          bg-[var(--bg-overlay)] backdrop-blur-[36px]
+          border border-[var(--glass-border)] shadow-[var(--shadow-lg)]
           overflow-hidden
         "
       >

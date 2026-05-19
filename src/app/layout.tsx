@@ -28,7 +28,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('theme')||'dark';if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();` }} />
       </head>
-      <body className="h-full flex flex-col bg-bg-primary text-text-primary" suppressHydrationWarning>
+      <body className="h-full flex flex-col bg-bg-base text-text-primary" suppressHydrationWarning>
         <AuthProvider>
           <FilterProvider>
             <Navbar />
