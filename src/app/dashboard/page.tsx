@@ -493,11 +493,11 @@ export default function DashboardPage() {
                         background: getCSSVar('--bg-overlay'),
                         border: `1px solid ${getCSSVar('--glass-border')}`,
                         borderRadius: 'var(--radius-md)',
-                        color: '#ffffff',
+                        color: getCSSVar('--text-primary'),
                         fontSize: '12px',
                         fontFamily: 'var(--font-mono)',
                       }}
-                      itemStyle={{ color: '#ffffff' }}
+                      itemStyle={{ color: getCSSVar('--text-primary') }}
                     />
                     <Legend 
                       verticalAlign="bottom" 
@@ -542,11 +542,11 @@ export default function DashboardPage() {
                         background: getCSSVar('--bg-overlay'),
                         border: `1px solid ${getCSSVar('--glass-border')}`,
                         borderRadius: 'var(--radius-md)',
-                        color: '#ffffff',
+                        color: getCSSVar('--text-primary'),
                         fontSize: '12px',
                         fontFamily: 'var(--font-mono)',
                       }}
-                      itemStyle={{ color: '#ffffff' }}
+                      itemStyle={{ color: getCSSVar('--text-primary') }}
                     />
                     <Bar 
                       dataKey="value" 
@@ -894,7 +894,7 @@ export default function DashboardPage() {
                         {aiPrediction.riskZones.length > 0 && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {aiPrediction.riskZones.map((zone, i) => (
-                                  <div key={i} className="flex flex-col gap-1.5 p-3 rounded-[var(--radius-sm)] bg-black/20 border border-[var(--glass-border)]">
+                                  <div key={i} className="flex flex-col gap-1.5 p-3 rounded-[var(--radius-sm)] bg-[var(--bg-subtle)] border border-[var(--glass-border)]">
                                     <div className="flex items-center justify-between">
                                       <span className="text-[12px] font-bold text-[var(--text-primary)]">{zone.city}</span>
                                       <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-[var(--alarm-critical)]/20 text-[var(--alarm-critical)] border border-[var(--alarm-critical)]/30">

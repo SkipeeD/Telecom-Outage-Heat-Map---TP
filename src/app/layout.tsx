@@ -25,6 +25,9 @@ export default function RootLayout({
        * and client-rendered HTML due to theme and browser-specific attributes.
        */
       <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable)} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('theme')||'dark';if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();` }} />
+      </head>
       <body className="h-full flex flex-col bg-bg-primary text-text-primary" suppressHydrationWarning>
         <AuthProvider>
           <FilterProvider>

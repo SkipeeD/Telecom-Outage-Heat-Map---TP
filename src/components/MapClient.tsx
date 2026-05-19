@@ -9,6 +9,7 @@ import { MapSearch } from './MapSearch'
 import { WeatherOverlayToggle } from './WeatherOverlayToggle'
 import { WeatherOverlay } from './WeatherOverlay'
 import { useWeatherOverlay } from '@/hooks/useWeatherOverlay'
+import { useTheme } from '@/hooks/useTheme'
 import type { CityWeatherDetail } from '@/app/api/weather/route'
 
 function ResizeHandler() {
@@ -74,6 +75,7 @@ interface MapClientProps {
 
 export default function MapClient({ antennas, selectedId, focusAntennaId, activeFilters, weatherRisk, weatherDetails, onAntennaClick }: MapClientProps) {
   const { enabled: weatherOverlayOn, toggle: toggleWeatherOverlay } = useWeatherOverlay()
+  const { theme } = useTheme()
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null)
   const markerPathsRef = useRef(new Map<string, SVGElement>())
   const searchOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -103,10 +105,14 @@ export default function MapClient({ antennas, selectedId, focusAntennaId, active
         zoom={7}
         zoomControl={false}
         attributionControl={false}
-        style={{ width: '100%', height: '100%', background: '#1a1a2e' }}
+        style={{ width: '100%', height: '100%', background: theme === 'dark' ? '#1a1a2e' : '#e8e8f2' }}
       >
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          key={theme}
+          url={theme === 'dark'
+            ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+            : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+          }
           subdomains="abcd"
           maxZoom={20}
           keepBuffer={6}
