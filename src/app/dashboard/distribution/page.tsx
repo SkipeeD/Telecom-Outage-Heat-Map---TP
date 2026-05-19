@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { motion } from 'motion/react'
-import { incidentMatchesAlarm, subscribeToAntennas, subscribeToIncidents } from '@/lib/firestore'
+import { incidentMatchesAlarm, getAntennas, getAllIncidents } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import type { Antenna, Alarm, AlarmSeverity, Incident, Technology } from '@/types'
 import { ArrowLeft, Clock, Users, CheckCircle2, Search, MapPin } from 'lucide-react'
@@ -54,12 +54,20 @@ function DistributionContent() {
 
   useEffect(() => {
     if (!user) return
-    const unsubAntennas = subscribeToAntennas(setAntennas)
-    const unsubIncidents = subscribeToIncidents(setIncidents)
-    return () => {
-      unsubAntennas()
-      unsubIncidents()
+    let cancelled = false
+
+    const fetchAll = async () => {
+      try {
+        const [antennasData, incidentsData] = await Promise.all([getAntennas(), getAllIncidents()])
+        if (cancelled) return
+        setAntennas(antennasData)
+        setIncidents(incidentsData)
+      } catch { /* retry on next interval */ }
     }
+
+    void fetchAll()
+    const id = setInterval(() => void fetchAll(), 30_000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [user])
 
   const items = useMemo(() => {

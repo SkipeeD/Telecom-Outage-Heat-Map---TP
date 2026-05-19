@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
-import { subscribeToIncidents, subscribeToMessages, sendChatMessage, resolveIncident, closeIncident, acknowledgeAssignedIncidents } from '@/lib/firestore'
+import { getAllIncidents, sendChatMessage, resolveIncident, closeIncident, acknowledgeAssignedIncidents } from '@/lib/firestore'
+import { subscribeToMessages } from '@/lib/firestore-chat'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   LayoutDashboard, Wrench, Users, MessageSquare,
@@ -765,23 +766,16 @@ function ChatView({ incidents, loading, currentUid, currentName }: ChatViewProps
     }
   }, [activeIncidents, selectedIncident])
 
-  // Subscribe to messages for selected incident
+  // Subscribe to messages for selected incident (real-time via Firestore onSnapshot)
   useEffect(() => {
     if (!selectedIncident) return
     setMsgLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
-    setMsgError(null)
-    setMessages([])
+    setMsgError(null) // eslint-disable-line react-hooks/set-state-in-effect
+    setMessages([]) // eslint-disable-line react-hooks/set-state-in-effect
     const unsub = subscribeToMessages(
       selectedIncident.incidentNumber,
-      msgs => {
-        setMessages(msgs)
-        setMsgLoading(false)
-        setMsgError(null)
-      },
-      err => {
-        setMsgLoading(false)
-        setMsgError('Failed to load messages. Check your connection and try again.')
-      }
+      msgs => { setMessages(msgs); setMsgLoading(false); setMsgError(null) },
+      () => { setMsgLoading(false); setMsgError('Failed to load messages. Check your connection and try again.') }
     )
     return () => unsub()
   }, [selectedIncident])
@@ -1037,11 +1031,20 @@ export default function EngineerPage() {
 
   useEffect(() => {
     if (authLoading || !profile || profile.role !== 'engineer') return
-    const unsub = subscribeToIncidents(all => {
-      setIncidents(all.filter(i => (i.assignees ?? []).some(a => a.uid === profile.uid)))
-      setLoading(false)
-    })
-    return () => unsub()
+    let cancelled = false
+
+    const fetchIncidents = async () => {
+      try {
+        const all = await getAllIncidents()
+        if (cancelled) return
+        setIncidents(all.filter(i => (i.assignees ?? []).some(a => a.uid === profile.uid)))
+        setLoading(false)
+      } catch { /* retry on next interval */ }
+    }
+
+    void fetchIncidents()
+    const id = setInterval(() => void fetchIncidents(), 10_000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [authLoading, profile])
 
   if (authLoading || profile?.role !== 'engineer') return null
