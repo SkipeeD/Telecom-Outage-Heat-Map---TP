@@ -58,7 +58,7 @@ function DistributionContent() {
 
     const fetchAll = async () => {
       try {
-        const [antennasData, incidentsData] = await Promise.all([getAntennas(), getAllIncidents()])
+        const [{ antennas: antennasData }, incidentsData] = await Promise.all([getAntennas(), getAllIncidents()])
         if (cancelled) return
         setAntennas(antennasData)
         setIncidents(incidentsData)

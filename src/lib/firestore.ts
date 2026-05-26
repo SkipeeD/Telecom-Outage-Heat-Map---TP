@@ -13,9 +13,26 @@ export function incidentMatchesAlarm(incident: Incident, alarm: Alarm): boolean 
 
 // ─── Antennas ────────────────────────────────────────────────────────────────
 
-export async function getAntennas(): Promise<Antenna[]> {
-  const data = await apiFetch<{ antennas: Antenna[] }>('/api/antennas')
-  return data.antennas
+export interface AntennaData {
+  /** Antennas matching the requested severity filter (or all if no filter). */
+  antennas: Antenna[]
+  /**
+   * Severity counts computed from the FULL topology — never affected by the
+   * severity filter so the filter bar always shows accurate totals.
+   */
+  counts: Record<string, number>
+}
+
+/**
+ * Fetch antennas from the server-side cached API.
+ * Pass `severity` to receive only antennas with at least one cell at that
+ * severity level; counts always reflect the full topology regardless.
+ */
+export async function getAntennas(severity?: string): Promise<AntennaData> {
+  const qs = severity && severity !== 'all'
+    ? `?severity=${encodeURIComponent(severity)}`
+    : ''
+  return apiFetch<AntennaData>(`/api/antennas${qs}`)
 }
 
 // ─── Incidents ───────────────────────────────────────────────────────────────
