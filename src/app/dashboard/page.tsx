@@ -130,7 +130,7 @@ export default function DashboardPage() {
     let cancelled = false
     const fetchAntennas = async () => {
       try {
-        const data = await getAntennas()
+        const { antennas: data } = await getAntennas()
         if (!cancelled) setAntennas(data)
       } catch { /* retry on next interval */ }
     }
@@ -379,13 +379,29 @@ export default function DashboardPage() {
         className="max-w-7xl mx-auto space-y-8"
       >
         {/* Header */}
-        <motion.div variants={itemVariants} className="flex flex-col gap-1">
-          <h1 className="text-[28px] font-semibold text-[var(--text-primary)]">
-            Network Operations Center
-          </h1>
-          <p className="text-[14px] text-[var(--text-secondary)]">
-            Real-time infrastructure health and outage monitoring dashboard.
-          </p>
+        <motion.div variants={itemVariants} className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-[28px] font-semibold text-[var(--text-primary)]">
+              Network Operations Center
+            </h1>
+            <p className="text-[14px] text-[var(--text-secondary)]">
+              Real-time infrastructure health and outage monitoring dashboard.
+            </p>
+          </div>
+          <Button
+            onClick={() => router.push('/dashboard/alarms')}
+            className="
+              shrink-0 flex items-center gap-2
+              bg-[var(--accent)] hover:bg-[var(--accent-bright)]
+              text-white text-[13px] font-medium
+              rounded-[var(--radius-md)]
+              shadow-[var(--shadow-glow)]
+              transition-all duration-200
+            "
+          >
+            <ShieldAlert className="size-4" />
+            View All Alarms
+          </Button>
         </motion.div>
 
         {/* Quick Stats */}

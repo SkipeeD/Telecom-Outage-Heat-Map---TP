@@ -17,7 +17,6 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/components/AuthProvider'
 import { acknowledgeAssignedIncidents, getIncidentsForSite } from '@/lib/firestore'
 import type { Incident } from '@/types'
-import { MapPin } from 'lucide-react'
 
 const POPUP_WIDTH = 360
 const GAP = 12
@@ -332,18 +331,6 @@ export function AntennaPopup({
                 )}
               </div>
 
-              {/* Meta */}
-              <div className="py-2 border-t border-[var(--glass-border)]">
-                <a 
-                  href={`https://www.google.com/maps/search/?api=1&query=${antenna.latitude},${antenna.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--accent)] text-white hover:bg-[var(--accent-bright)] transition-all shadow-[var(--shadow-glow)] text-[10px] font-bold uppercase tracking-widest"
-                >
-                  <MapPin className="size-3.5" />
-                  Google Maps
-                </a>
-              </div>
             </div>
           </div>
 
