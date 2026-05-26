@@ -25,20 +25,6 @@ const MapClient = dynamic(() => import('@/app/map/Map'), {
   )
 })
 
-const severityRank: Record<AlarmSeverity, number> = {
-  critical: 5,
-  major: 4,
-  minor: 3,
-  warning: 2,
-  ok: 1,
-}
-
-function getWorstStatus(antenna: Antenna): AlarmSeverity {
-  if (!antenna.cells || antenna.cells.length === 0) return 'ok'
-  return antenna.cells.reduce((prev, curr) => 
-    severityRank[curr.status] > severityRank[prev.status] ? curr : prev
-  ).status
-}
 
 function MapPageInner() {
   const { user, loading: authLoading } = useAuth()
@@ -60,25 +46,23 @@ function MapPageInner() {
 
     const fetchAntennas = async () => {
       try {
-        const data = await getAntennas()
+        // Pass the active severity filter — server filters the antenna list and
+        // always returns full counts so the filter bar stays accurate.
+        const { antennas: data, counts } = await getAntennas(
+          selectedSeverity !== 'all' ? selectedSeverity : undefined
+        )
         if (cancelled) return
         setAntennas(data)
-        const newCounts: Record<FilterSeverity, number> = { all: 0, critical: 0, major: 0, minor: 0, warning: 0, ok: 0 }
-        data.forEach(antenna => {
-          const status = getWorstStatus(antenna)
-          if (newCounts[status] !== undefined) newCounts[status]++
-          newCounts.all++
-        })
-        setCounts(newCounts)
+        setCounts(counts as Record<FilterSeverity, number>)
       } catch {
-        // silently retry
+        // Keep stale data visible — don't clear antennas on error
       }
     }
 
     void fetchAntennas()
     const id = setInterval(() => void fetchAntennas(), 30_000)
     return () => { cancelled = true; clearInterval(id) }
-  }, [user, setCounts])
+  }, [user, setCounts, selectedSeverity])
 
   useEffect(() => {
     if (!user) return
