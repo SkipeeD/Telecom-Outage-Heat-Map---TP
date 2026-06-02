@@ -24,8 +24,8 @@ function EngineerContent() {
   const router = useRouter()
   const { user, profile, loading: authLoading } = useAuth()
   
-  const [incidents, setIncidents] = useState<Incident[]>([])
-  const [loading, setLoading] = useState(true)
+  const [history, setHistory] = useState<Incident[]>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
 
   useEffect(() => {
     if (!authLoading && profile && profile.role !== 'admin') {
@@ -48,7 +48,9 @@ function EngineerContent() {
     const days = timeRange === '30d' ? 30 : timeRange === '3m' ? 90 : timeRange === '6m' ? 180 : 365
     const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
 
-    setHistoryLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
+    queueMicrotask(() => {
+      if (!cancelled) setHistoryLoading(true)
+    })
     void (async () => {
       try {
         // Page through the history endpoint for the selected window.

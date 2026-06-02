@@ -13,7 +13,7 @@ import { SignalHigh, Sun, Moon } from "lucide-react"
 import { useFilters, FilterSeverity } from './FilterProvider'
 import { cn } from '@/lib/utils'
 import { Switch } from "@/components/ui/interfaces-switch"
-import { canManageUsers, roleLabel } from '@/lib/roles'
+import { roleLabel } from '@/lib/roles'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 
 export function ThemeToggle() {
@@ -127,7 +127,7 @@ export default function Navbar() {
   const isMapPage = pathname === '/map' || pathname.startsWith('/map/')
 
   const navTabs = profile?.role === 'admin'
-    ? [...BASE_NAV_TABS, { href: '/admin', label: 'Admin' }, { href: '/dashboard/engineers', label: 'Performance' }]
+    ? [...BASE_NAV_TABS, { href: '/admin', label: 'Admin' }]
     : profile?.role === 'engineer'
     ? [...BASE_NAV_TABS, { href: '/engineer', label: 'Work' }]
     : BASE_NAV_TABS

@@ -4,12 +4,13 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { incidentMatchesAlarm, getAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
+import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
 import type { Antenna, AlarmSeverity, Alarm, DashboardSummary, Incident } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import {
-  Activity, ShieldAlert, CheckCircle2, Clock, ArrowLeft, Map,
+  Activity, ShieldAlert, CheckCircle2, Clock, ArrowLeft, Map as MapIcon,
   Clock3, Users, ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react'
 import { sevColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
@@ -54,6 +55,7 @@ export default function AlarmsPage() {
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const { snapshot, openIncidents } = useLiveSnapshot(!!user)
 
   // Filters
   const [chronicFilter, setChronicFilter] = useState<SeverityFilter>('all')
@@ -72,7 +74,7 @@ export default function AlarmsPage() {
           user.getIdToken(),
         ])
         if (cancelled) return
-        setAntennas(antennasData)
+        setAntennas(antennasData.antennas)
 
         const res = await fetch('/api/dashboard/summary', {
           headers: { Authorization: `Bearer ${idToken}` },
@@ -95,20 +97,36 @@ export default function AlarmsPage() {
     return () => { cancelled = true; clearInterval(id) }
   }, [user, refreshKey])
 
+  const allIncidents = useMemo(() => {
+    const merged = new Map<string, Incident>()
+    for (const i of incidents) merged.set(i.incidentNumber, i)
+    for (const i of openIncidents) merged.set(i.incidentNumber, i)
+    return Array.from(merged.values())
+  }, [incidents, openIncidents])
+
+  const antennaById = useMemo(() => {
+    const map = new Map<string, Antenna>()
+    for (const antenna of antennas) map.set(antenna.id, antenna)
+    return map
+  }, [antennas])
+
   /* ── Live alerts (all active, not just top 8) ── */
   const allActiveAlerts = useMemo(() =>
-    antennas
-      .flatMap(a => (a.cells || [])
-        .filter(c => c.currentAlarm && !c.currentAlarm.resolved)
-        .map(c => {
-          const alarm = c.currentAlarm!
-          const incident = incidents.find(i => incidentMatchesAlarm(i, alarm))
-          const city = cityForAntenna(a.latitude, a.longitude)
-          return { ...alarm, antennaName: a.name, incident, city }
-        })
-      )
+    (snapshot?.activeAlarms ?? [])
+      .filter(alarm => !alarm.resolved)
+      .map(alarm => {
+        const antenna = antennaById.get(alarm.antennaId)
+        const incident = allIncidents.find(i => incidentMatchesAlarm(i, alarm))
+        const city = antenna ? cityForAntenna(antenna.latitude, antenna.longitude) : undefined
+        return {
+          ...alarm,
+          antennaName: antenna?.name ?? alarm.siteId,
+          incident,
+          city,
+        }
+      })
       .sort((a, b) => severityRank[b.severity] - severityRank[a.severity] || new Date(b.alarmTime).getTime() - new Date(a.alarmTime).getTime()),
-  [antennas, incidents])
+  [allIncidents, antennaById, snapshot])
 
   const filteredLive = useMemo(() =>
     liveFilter === 'all' ? allActiveAlerts : allActiveAlerts.filter(a => a.severity === liveFilter),
@@ -200,7 +218,7 @@ export default function AlarmsPage() {
                 transition-all duration-200 uppercase tracking-widest
               "
             >
-              <Map className="size-3.5" />
+              <MapIcon className="size-3.5" />
               Go to Map
             </Button>
           </div>
@@ -562,7 +580,7 @@ export default function AlarmsPage() {
               transition-all duration-200
             "
           >
-            <Map className="size-4" />
+            <MapIcon className="size-4" />
             Open Full Map View
           </Button>
         </motion.div>

@@ -6,10 +6,7 @@ import Navbar from "@/components/Navbar";
 import { NameEntryDialog } from "@/components/NameEntryDialog";
 import { NotificationProvider } from "@/components/notifications/NotificationProvider";
 import { NotificationToaster } from "@/components/notifications/NotificationToaster";
-import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "SIGNALIS | Outage Heat Map",
@@ -26,7 +23,7 @@ export default function RootLayout({
        * suppressHydrationWarning added to prevent mismatches between server-rendered 
        * and client-rendered HTML due to theme and browser-specific attributes.
        */
-      <html lang="en" className={cn("h-full antialiased", "font-sans", geist.variable)} suppressHydrationWarning>
+      <html lang="en" className={cn("h-full antialiased", "font-sans")} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('theme')||'dark';if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();` }} />
       </head>

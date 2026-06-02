@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
-import { incidentMatchesAlarm, getAntennas } from '@/lib/firestore'
+import { getAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
 import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
@@ -17,7 +17,7 @@ import {
   Activity, ShieldAlert, CheckCircle2, Zap, Globe, Download, History, Wrench,
   ArrowRight, Cloud, CloudRain, Sun, Wind, Thermometer, LucideIcon, MapPin, Users, RefreshCw
 } from 'lucide-react'
-import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
+import { TECHS, sevColorVar, techColorVar, relTime } from '@/lib/antenna-helpers'
 import { cn } from '@/lib/utils'
 import { cityForAntenna } from '@/lib/weather-cities'
 import { Button } from '@/components/ui/button'
@@ -92,12 +92,12 @@ export default function DashboardPage() {
   const router = useRouter()
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
-  const [incidents, setIncidents] = useState<Incident[]>([])
   const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
 
   // Live state via meta/liveSnapshot — replaces the 30s antenna polling and
   // 10s incident polling that previously ran on this page.
   const { snapshot, openIncidents } = useLiveSnapshot(!!user)
+  const antennaSeverity = snapshot?.antennaSeverity
   const activeAlarms = useMemo(() => snapshot?.activeAlarms ?? [], [snapshot])
 
   // Chart data needs historical resolved incidents too — comes from the
@@ -174,7 +174,7 @@ export default function DashboardPage() {
         if (cancelled) return
 
         setResolvedAlarms(summary.resolvedAlarms)
-        setIncidents(summary.incidents)
+        setHistoricalIncidents(summary.incidents)
       } catch {
         // dashboard history is non-critical; live topology stays active
       }
@@ -186,22 +186,6 @@ export default function DashboardPage() {
       cancelled = true
       window.clearInterval(id)
     }
-  }, [user])
-
-  // New: Fetch real-time incidents directly to bypass dashboard summary cache (5m).
-  // This ensures engineer workload and assignment changes show up immediately.
-  useEffect(() => {
-    if (!user) return
-    let cancelled = false
-    const fetchRealTimeIncidents = async () => {
-      try {
-        const data = await getAllIncidents()
-        if (!cancelled) setIncidents(data)
-      } catch { /* non-critical */ }
-    }
-    void fetchRealTimeIncidents()
-    const id = setInterval(() => void fetchRealTimeIncidents(), 15_000)
-    return () => { cancelled = true; clearInterval(id) }
   }, [user])
 
   const fetchAiPrediction = useCallback(async (details: CityWeatherDetail[]) => {
@@ -282,7 +266,7 @@ export default function DashboardPage() {
       '2G': 0, '3G': 0, '4G': 0, '5G': 0, '6G': 0
     }
 
-    const severityMap = snapshot?.antennaSeverity ?? {}
+    const severityMap = antennaSeverity ?? {}
     const worstActiveAlarmByAntenna = new Map<string, Alarm>()
     for (const alarm of activeAlarms) {
       if (alarm.resolved) continue
@@ -418,7 +402,7 @@ export default function DashboardPage() {
     }
 
     return { total, alarms, ok, pieData, barData, resolvedChartData, utilizationData }
-  }, [antennas, incidents, timeRange])
+  }, [activeAlarms, antennaSeverity, antennas, incidents, timeRange])
 
   const myIncidents = useMemo(() => {
     if (!profile || profile.role !== 'engineer') return []
@@ -485,20 +469,39 @@ export default function DashboardPage() {
               Real-time infrastructure health and outage monitoring dashboard.
             </p>
           </div>
-          <Button
-            onClick={() => router.push('/dashboard/alarms')}
-            className="
-              shrink-0 flex items-center gap-2
-              bg-[var(--accent)] hover:bg-[var(--accent-bright)]
-              text-white text-[13px] font-medium
-              rounded-[var(--radius-md)]
-              shadow-[var(--shadow-glow)]
-              transition-all duration-200
-            "
-          >
-            <ShieldAlert className="size-4" />
-            View All Alarms
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {isAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => router.push('/dashboard/engineers')}
+                className="
+                  flex items-center gap-2
+                  bg-[var(--glass-bg)] hover:bg-[var(--glass-hover)]
+                  border-[var(--glass-border)] hover:border-[var(--border-strong)]
+                  text-[var(--text-primary)] text-[13px] font-medium
+                  rounded-[var(--radius-md)]
+                  transition-all duration-200
+                "
+              >
+                <Users className="size-4" />
+                Performance
+              </Button>
+            )}
+            <Button
+              onClick={() => router.push('/dashboard/alarms')}
+              className="
+                flex items-center gap-2
+                bg-[var(--accent)] hover:bg-[var(--accent-bright)]
+                text-white text-[13px] font-medium
+                rounded-[var(--radius-md)]
+                shadow-[var(--shadow-glow)]
+                transition-all duration-200
+              "
+            >
+              <ShieldAlert className="size-4" />
+              View All Alarms
+            </Button>
+          </div>
         </motion.div>
 
         {/* Quick Stats */}
