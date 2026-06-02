@@ -6,7 +6,7 @@ import type { Incident } from '@/types'
 
 export const runtime = 'nodejs'
 
-const INCIDENT_LIST_LIMIT = 100
+const INCIDENT_LIST_LIMIT = 500
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
