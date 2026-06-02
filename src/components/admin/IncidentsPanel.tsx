@@ -95,7 +95,10 @@ export function IncidentsPanel({ highlightIncident }: { highlightIncident?: stri
     if (!highlightIncident) return
     let cancelled = false
     queueMicrotask(() => {
-      if (!cancelled) setStatusFilter('ALL')
+      if (cancelled) return
+      setStatusFilter('ALL')
+      setExpandedInc(highlightIncident)
+      setSearch(highlightIncident)
     })
     return () => {
       cancelled = true

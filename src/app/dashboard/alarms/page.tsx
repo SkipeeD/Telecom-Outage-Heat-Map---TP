@@ -5,12 +5,12 @@ import { motion, AnimatePresence } from 'motion/react'
 import { incidentMatchesAlarm, getAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
-import type { Antenna, AlarmSeverity, Alarm, DashboardSummary } from '@/types'
+import type { Antenna, AlarmSeverity, Alarm, DashboardSummary, Incident } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import {
-  Activity, ShieldAlert, CheckCircle2, Clock, ArrowLeft, Map,
+  Activity, ShieldAlert, CheckCircle2, Clock, ArrowLeft, Map as MapIcon,
   Clock3, Users, ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react'
 import { sevColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
@@ -51,32 +51,30 @@ export default function AlarmsPage() {
 
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
+  const [incidents, setIncidents] = useState<Incident[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const { snapshot, openIncidents } = useLiveSnapshot(!!user)
 
+  // Filters
   const [chronicFilter, setChronicFilter] = useState<SeverityFilter>('all')
   const [liveFilter, setLiveFilter] = useState<SeverityFilter>('all')
   const [chronicExpanded, setChronicExpanded] = useState(true)
   const [liveExpanded, setLiveExpanded] = useState(true)
 
-  const { snapshot, openIncidents } = useLiveSnapshot(!!user)
-  const incidents = openIncidents
-  const activeAlarms = useMemo(() => snapshot?.activeAlarms ?? [], [snapshot])
-
-  // One-shot fetches: antenna positions + dashboard-summary's long-lived
-  // alarms. Manual refresh available via the refreshKey button.
   useEffect(() => {
     if (!user) return
     let cancelled = false
-    void (async () => {
+
+    const fetchData = async () => {
       try {
-        const [{ antennas: antennasData }, idToken] = await Promise.all([
+        const [antennasData, idToken] = await Promise.all([
           getAntennas(),
           user.getIdToken(),
         ])
         if (cancelled) return
-        setAntennas(antennasData)
+        setAntennas(antennasData.antennas)
 
         const res = await fetch('/api/dashboard/summary', {
           headers: { Authorization: `Bearer ${idToken}` },
@@ -85,38 +83,50 @@ export default function AlarmsPage() {
         const summary = await res.json() as DashboardSummary
         if (cancelled) return
         setLongLivedAlarms(summary.longLivedAlarms)
+        setIncidents(summary.incidents)
         setLastUpdated(new Date())
       } catch {
-        // keep stale data on error
+        // non-critical
       } finally {
         if (!cancelled) setLoading(false)
       }
-    })()
-    return () => { cancelled = true }
+    }
+
+    void fetchData()
+    const id = setInterval(() => { void fetchData() }, 30_000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [user, refreshKey])
 
+  const allIncidents = useMemo(() => {
+    const merged = new Map<string, Incident>()
+    for (const i of incidents) merged.set(i.incidentNumber, i)
+    for (const i of openIncidents) merged.set(i.incidentNumber, i)
+    return Array.from(merged.values())
+  }, [incidents, openIncidents])
+
   const antennaById = useMemo(() => {
-    const m: Record<string, Antenna> = {}
-    for (const a of antennas) m[a.id] = a
-    return m
+    const map = new Map<string, Antenna>()
+    for (const antenna of antennas) map.set(antenna.id, antenna)
+    return map
   }, [antennas])
 
-  /* ── Live alerts (all active) ── */
-  const allActiveAlerts = useMemo(() => {
-    const rows = activeAlarms.flatMap(alarm => {
-      if (alarm.resolved) return []
-      const a = antennaById[alarm.antennaId]
-      if (!a) return []
-      const incident = incidents.find(i => incidentMatchesAlarm(i, alarm))
-      const city = cityForAntenna(a.latitude, a.longitude)
-      return [{ ...alarm, antennaName: a.name, incident, city }]
-    })
-    return rows
-      .sort((a, b) =>
-        severityRank[b.severity] - severityRank[a.severity] ||
-        new Date(b.alarmTime).getTime() - new Date(a.alarmTime).getTime()
-      )
-  }, [activeAlarms, antennaById, incidents])
+  /* ── Live alerts (all active, not just top 8) ── */
+  const allActiveAlerts = useMemo(() =>
+    (snapshot?.activeAlarms ?? [])
+      .filter(alarm => !alarm.resolved)
+      .map(alarm => {
+        const antenna = antennaById.get(alarm.antennaId)
+        const incident = allIncidents.find(i => incidentMatchesAlarm(i, alarm))
+        const city = antenna ? cityForAntenna(antenna.latitude, antenna.longitude) : undefined
+        return {
+          ...alarm,
+          antennaName: antenna?.name ?? alarm.siteId,
+          incident,
+          city,
+        }
+      })
+      .sort((a, b) => severityRank[b.severity] - severityRank[a.severity] || new Date(b.alarmTime).getTime() - new Date(a.alarmTime).getTime()),
+  [allIncidents, antennaById, snapshot])
 
   const filteredLive = useMemo(() =>
     liveFilter === 'all' ? allActiveAlerts : allActiveAlerts.filter(a => a.severity === liveFilter),
@@ -126,15 +136,16 @@ export default function AlarmsPage() {
     chronicFilter === 'all' ? longLivedAlarms : longLivedAlarms.filter(a => a.severity === chronicFilter),
   [longLivedAlarms, chronicFilter])
 
+  /* ── Severity counts for filter pills ── */
   const liveCounts = useMemo(() => {
     const c: Record<SeverityFilter, number> = { all: allActiveAlerts.length, critical: 0, major: 0, minor: 0, warning: 0, ok: 0 }
-    allActiveAlerts.forEach(a => { c[a.severity]++ })
+    allActiveAlerts.forEach(a => c[a.severity]++)
     return c
   }, [allActiveAlerts])
 
   const chronicCounts = useMemo(() => {
     const c: Record<SeverityFilter, number> = { all: longLivedAlarms.length, critical: 0, major: 0, minor: 0, warning: 0, ok: 0 }
-    longLivedAlarms.forEach(a => { c[a.severity as SeverityFilter]++ })
+    longLivedAlarms.forEach(a => c[a.severity as SeverityFilter]++)
     return c
   }, [longLivedAlarms])
 
@@ -156,38 +167,58 @@ export default function AlarmsPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => router.push('/dashboard')}
-                className="h-8 gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] text-[12px] rounded-[var(--radius-md)]"
+                className="
+                  h-8 gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]
+                  hover:bg-[var(--glass-hover)] text-[12px] rounded-[var(--radius-md)]
+                "
               >
                 <ArrowLeft className="size-3.5" />
                 Dashboard
               </Button>
             </div>
-            <h1 className="text-[28px] font-semibold text-[var(--text-primary)]">Alarm Centre</h1>
+            <h1 className="text-[28px] font-semibold text-[var(--text-primary)]">
+              Alarm Centre
+            </h1>
             <p className="text-[14px] text-[var(--text-secondary)]">
               Chronic alarms &amp; live network alerts — full view.
             </p>
           </div>
 
           <div className="flex items-center gap-3 mt-2 flex-wrap">
+            {/* Last updated */}
             {lastUpdated && (
               <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">
                 Updated {relTime(lastUpdated.toISOString())}
               </span>
             )}
+            {/* Refresh */}
             <Button
               variant="outline"
               size="sm"
               onClick={() => { setLoading(true); setRefreshKey(k => k + 1) }}
-              className="h-8 gap-1.5 bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[11px] rounded-[var(--radius-md)] uppercase tracking-widest"
+              className="
+                h-8 gap-1.5
+                bg-[var(--glass-bg)] border-[var(--glass-border)]
+                text-[var(--text-secondary)] hover:text-[var(--text-primary)]
+                text-[11px] rounded-[var(--radius-md)] uppercase tracking-widest
+              "
             >
               <RefreshCw className="size-3" />
               Refresh
             </Button>
+            {/* Go to Map */}
             <Button
               onClick={() => router.push('/map')}
-              className="h-8 gap-1.5 flex items-center bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white text-[12px] font-medium rounded-[var(--radius-md)] shadow-[var(--shadow-glow)] transition-all duration-200 uppercase tracking-widest"
+              className="
+                h-8 gap-1.5 flex items-center
+                bg-[var(--accent)] hover:bg-[var(--accent-bright)]
+                text-white text-[12px] font-medium
+                rounded-[var(--radius-md)]
+                shadow-[var(--shadow-glow)]
+                transition-all duration-200 uppercase tracking-widest
+              "
             >
-              <Map className="size-3.5" />
+              <MapIcon className="size-3.5" />
               Go to Map
             </Button>
           </div>
@@ -196,18 +227,34 @@ export default function AlarmsPage() {
         {/* ── Summary pills ── */}
         <motion.div variants={itemVariants} className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Live Alerts',  value: allActiveAlerts.length,                                           color: '--alarm-critical', icon: Activity    },
-            { label: 'Chronic',      value: longLivedAlarms.length,                                           color: '--alarm-major',    icon: Clock3      },
-            { label: 'Critical',     value: allActiveAlerts.filter(a => a.severity === 'critical').length,    color: '--alarm-critical', icon: ShieldAlert },
-            { label: 'Major',        value: allActiveAlerts.filter(a => a.severity === 'major').length,       color: '--alarm-major',    icon: ShieldAlert },
+            { label: 'Live Alerts', value: allActiveAlerts.length, color: '--alarm-critical', icon: Activity },
+            { label: 'Chronic', value: longLivedAlarms.length, color: '--alarm-major', icon: Clock3 },
+            {
+              label: 'Critical',
+              value: allActiveAlerts.filter(a => a.severity === 'critical').length,
+              color: '--alarm-critical',
+              icon: ShieldAlert,
+            },
+            {
+              label: 'Major',
+              value: allActiveAlerts.filter(a => a.severity === 'major').length,
+              color: '--alarm-major',
+              icon: ShieldAlert,
+            },
           ].map(({ label, value, color, icon: Icon }) => (
-            <Card key={label} className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
+            <Card
+              key={label}
+              className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]"
+            >
               <CardContent className="pt-4 pb-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] font-medium text-[var(--text-secondary)] uppercase tracking-widest">{label}</span>
                   <Icon className="size-3.5" style={{ color: `var(${color})` }} />
                 </div>
-                <div className="text-2xl font-bold font-mono" style={{ color: value > 0 ? `var(${color})` : 'var(--text-muted)' }}>
+                <div
+                  className="text-2xl font-bold font-mono"
+                  style={{ color: value > 0 ? `var(${color})` : 'var(--text-muted)' }}
+                >
                   {loading ? '–' : value}
                 </div>
               </CardContent>
@@ -234,6 +281,7 @@ export default function AlarmsPage() {
               <button
                 onClick={() => setChronicExpanded(v => !v)}
                 className="size-7 grid place-items-center rounded-[var(--radius-md)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-colors"
+                aria-label={chronicExpanded ? 'Collapse' : 'Expand'}
               >
                 {chronicExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
               </button>
@@ -250,6 +298,7 @@ export default function AlarmsPage() {
                   className="overflow-hidden"
                 >
                   <CardContent className="pt-0">
+                    {/* Filter pills */}
                     <div className="flex items-center gap-2 mb-4 flex-wrap">
                       {severityFilters.map(f => (
                         <motion.button
@@ -290,16 +339,26 @@ export default function AlarmsPage() {
                             {filteredChronic.map((alarm) => {
                               const ms = alarm.durationMs ?? 0
                               const durationColor =
-                                ms >= 3 * 24 * 60 * 60_000 ? 'var(--alarm-critical)'
-                                : ms >= 24 * 60 * 60_000    ? 'var(--alarm-major)'
-                                : 'var(--text-secondary)'
+                                ms >= 3 * 24 * 60 * 60_000
+                                  ? 'var(--alarm-critical)'
+                                  : ms >= 24 * 60 * 60_000
+                                  ? 'var(--alarm-major)'
+                                  : 'var(--text-secondary)'
                               return (
-                                <tr key={alarm.id} className="border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors">
+                                <tr
+                                  key={alarm.id}
+                                  className="border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors"
+                                >
                                   <td className="py-2.5 pr-4 text-[var(--text-primary)]">{alarm.siteId}</td>
                                   <td className="py-2.5 pr-4 text-[var(--text-secondary)]">{alarm.technology}</td>
                                   <td className="py-2.5 pr-4">
-                                    <span className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest font-bold"
-                                      style={{ color: getCSSVar(sevColorVar[alarm.severity]), background: `${getCSSVar(sevColorVar[alarm.severity])}22` }}>
+                                    <span
+                                      className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest font-bold"
+                                      style={{
+                                        color: getCSSVar(sevColorVar[alarm.severity]),
+                                        background: `${getCSSVar(sevColorVar[alarm.severity])}22`,
+                                      }}
+                                    >
                                       {alarm.severity}
                                     </span>
                                   </td>
@@ -348,6 +407,7 @@ export default function AlarmsPage() {
               <button
                 onClick={() => setLiveExpanded(v => !v)}
                 className="size-7 grid place-items-center rounded-[var(--radius-md)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-colors"
+                aria-label={liveExpanded ? 'Collapse' : 'Expand'}
               >
                 {liveExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
               </button>
@@ -364,6 +424,7 @@ export default function AlarmsPage() {
                   className="overflow-hidden"
                 >
                   <CardContent className="pt-0">
+                    {/* Filter pills */}
                     <div className="flex items-center gap-2 mb-4 flex-wrap">
                       {severityFilters.map(f => (
                         <motion.button
@@ -392,12 +453,19 @@ export default function AlarmsPage() {
                         {filteredLive.map((alarm) => {
                           const assignees = alarm.incident?.assignees ?? []
                           return (
-                            <div key={alarm.id} className="flex items-center justify-between py-3 px-3 rounded-[var(--radius-md)] border border-[var(--glass-border)] hover:border-[var(--border-strong)] hover:bg-[var(--glass-hover)] transition-all">
+                            <div
+                              key={alarm.id}
+                              className="flex items-center justify-between py-3 px-3 rounded-[var(--radius-md)] border border-[var(--glass-border)] hover:border-[var(--border-strong)] hover:bg-[var(--glass-hover)] transition-all group"
+                            >
                               <div className="flex items-center gap-4 min-w-0">
-                                <div className="size-2 rounded-full shrink-0 animate-pulse"
-                                  style={{ backgroundColor: getCSSVar(sevColorVar[alarm.severity]) }} />
+                                <div
+                                  className="size-2 rounded-full shrink-0 animate-pulse"
+                                  style={{ backgroundColor: getCSSVar(sevColorVar[alarm.severity]) }}
+                                />
                                 <div className="flex flex-col min-w-0">
-                                  <span className="text-[13px] font-semibold text-[var(--text-primary)] truncate">{alarm.antennaName}</span>
+                                  <span className="text-[13px] font-semibold text-[var(--text-primary)] truncate">
+                                    {alarm.antennaName}
+                                  </span>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-[10px] font-mono text-[var(--text-muted)]">{alarm.siteId}</span>
                                     <span className="text-[10px] text-[var(--text-muted)]">·</span>
@@ -413,14 +481,20 @@ export default function AlarmsPage() {
                               </div>
 
                               <div className="flex items-center gap-4 shrink-0 ml-4">
+                                {/* Alarm text — hidden on small screens */}
                                 <div className="hidden lg:flex flex-col items-end max-w-[260px]">
-                                  <span className="text-[11px] text-[var(--text-primary)] truncate text-right w-full">{alarm.text}</span>
+                                  <span className="text-[11px] text-[var(--text-primary)] truncate text-right w-full">
+                                    {alarm.text}
+                                  </span>
                                   <div className="flex items-center gap-1.5 mt-0.5">
                                     <Clock3 className="size-3 text-[var(--text-muted)]" />
-                                    <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-tighter">{relTime(alarm.alarmTime)}</span>
+                                    <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-tighter">
+                                      {relTime(alarm.alarmTime)}
+                                    </span>
                                   </div>
                                 </div>
 
+                                {/* Assignees */}
                                 <div className="hidden md:flex items-center gap-1.5">
                                   <Users className="size-3 text-[var(--alarm-ok)]" />
                                   {assignees.length === 0 ? (
@@ -431,16 +505,30 @@ export default function AlarmsPage() {
                                         const label = a.displayName ?? a.email.split('@')[0]
                                         const initials = label.slice(0, 2).toUpperCase()
                                         return (
-                                          <div key={a.uid} title={a.email}
+                                          <div
+                                            key={a.uid}
+                                            title={a.email}
                                             className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[9px] font-bold ring-2 ring-[var(--bg-base)]"
-                                            style={{ background: 'color-mix(in srgb, var(--alarm-ok) 15%, var(--bg-subtle))', color: 'var(--alarm-ok)', border: '1px solid rgba(52,211,153,0.3)', zIndex: assignees.length - idx }}>
+                                            style={{
+                                              background: 'color-mix(in srgb, var(--alarm-ok) 15%, var(--bg-subtle))',
+                                              color: 'var(--alarm-ok)',
+                                              border: '1px solid rgba(52,211,153,0.3)',
+                                              zIndex: assignees.length - idx,
+                                            }}
+                                          >
                                             {initials}
                                           </div>
                                         )
                                       })}
                                       {assignees.length > 4 && (
-                                        <div className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[8px] font-bold ring-2 ring-[var(--bg-base)]"
-                                          style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)', border: '1px solid var(--glass-border)' }}>
+                                        <div
+                                          className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[8px] font-bold ring-2 ring-[var(--bg-base)]"
+                                          style={{
+                                            background: 'var(--bg-subtle)',
+                                            color: 'var(--text-muted)',
+                                            border: '1px solid var(--glass-border)',
+                                          }}
+                                        >
                                           +{assignees.length - 4}
                                         </div>
                                       )}
@@ -448,8 +536,15 @@ export default function AlarmsPage() {
                                   )}
                                 </div>
 
-                                <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest min-w-[76px] text-center"
-                                  style={{ backgroundColor: `${getCSSVar(sevColorVar[alarm.severity])}22`, color: getCSSVar(sevColorVar[alarm.severity]), border: `1px solid ${getCSSVar(sevColorVar[alarm.severity])}44` }}>
+                                {/* Severity badge */}
+                                <div
+                                  className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest min-w-[76px] text-center"
+                                  style={{
+                                    backgroundColor: `${getCSSVar(sevColorVar[alarm.severity])}22`,
+                                    color: getCSSVar(sevColorVar[alarm.severity]),
+                                    border: `1px solid ${getCSSVar(sevColorVar[alarm.severity])}44`,
+                                  }}
+                                >
                                   {alarm.severity}
                                 </div>
                               </div>
@@ -476,9 +571,16 @@ export default function AlarmsPage() {
         <motion.div variants={itemVariants} className="flex justify-center pb-4">
           <Button
             onClick={() => router.push('/map')}
-            className="gap-2 px-8 py-5 bg-[var(--accent)] hover:bg-[var(--accent-bright)] text-white text-[13px] font-medium rounded-[var(--radius-lg)] shadow-[var(--shadow-glow)] transition-all duration-200"
+            className="
+              gap-2 px-8 py-5
+              bg-[var(--accent)] hover:bg-[var(--accent-bright)]
+              text-white text-[13px] font-medium
+              rounded-[var(--radius-lg)]
+              shadow-[var(--shadow-glow)]
+              transition-all duration-200
+            "
           >
-            <Map className="size-4" />
+            <MapIcon className="size-4" />
             Open Full Map View
           </Button>
         </motion.div>

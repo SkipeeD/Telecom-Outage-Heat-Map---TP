@@ -1060,12 +1060,13 @@ export default function EngineerPage() {
         if (cancelled) return
         setView('incidents')
         setSelectedIncidentNumber(incidentFromUrl)
+        router.replace('/engineer', { scroll: false })
       })
       return () => {
         cancelled = true
       }
     }
-  }, [incidentFromUrl])
+  }, [incidentFromUrl, router])
 
   // Live open incidents pushed via meta/liveSnapshot — no polling.
   // Resolved/closed history for this engineer is fetched on demand from the

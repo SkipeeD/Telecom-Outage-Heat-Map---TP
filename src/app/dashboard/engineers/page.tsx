@@ -22,10 +22,16 @@ const normalize = (str: string) =>
 
 function EngineerContent() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
   
   const [history, setHistory] = useState<Incident[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
+
+  useEffect(() => {
+    if (!authLoading && profile && profile.role !== 'admin') {
+      router.replace('/dashboard')
+    }
+  }, [profile, authLoading, router])
   const [search, setSearch] = useState('')
   const [selectedEngineer, setSelectedEngineer] = useState<string | 'ALL'>('ALL')
   const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
@@ -42,7 +48,9 @@ function EngineerContent() {
     const days = timeRange === '30d' ? 30 : timeRange === '3m' ? 90 : timeRange === '6m' ? 180 : 365
     const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
 
-    setHistoryLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
+    queueMicrotask(() => {
+      if (!cancelled) setHistoryLoading(true)
+    })
     void (async () => {
       try {
         // Page through the history endpoint for the selected window.
@@ -132,6 +140,14 @@ function EngineerContent() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  if (authLoading || (profile && profile.role !== 'admin')) {
+    return (
+      <div className="flex h-[60vh] w-full items-center justify-center text-[var(--text-muted)] font-mono text-xs uppercase tracking-widest animate-pulse">
+        Checking clearance...
+      </div>
+    )
   }
 
   return (

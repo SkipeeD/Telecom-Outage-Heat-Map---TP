@@ -13,12 +13,8 @@ import { SignalHigh, Sun, Moon } from "lucide-react"
 import { useFilters, FilterSeverity } from './FilterProvider'
 import { cn } from '@/lib/utils'
 import { Switch } from "@/components/ui/interfaces-switch"
-import { canManageUsers, roleLabel } from '@/lib/roles'
+import { roleLabel } from '@/lib/roles'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
-
-function isEngineer(role: string | undefined) {
-  return role === 'engineer'
-}
 
 export function ThemeToggle() {
   const { theme, toggle, isDark } = useTheme()
@@ -130,10 +126,10 @@ export default function Navbar() {
 
   const isMapPage = pathname === '/map' || pathname.startsWith('/map/')
 
-  const navTabs = canManageUsers(profile?.role)
-    ? [...BASE_NAV_TABS, { href: '/admin', label: 'Admin' } as const]
-    : isEngineer(profile?.role)
-    ? [...BASE_NAV_TABS, { href: '/engineer', label: 'Work' } as const]
+  const navTabs = profile?.role === 'admin'
+    ? [...BASE_NAV_TABS, { href: '/admin', label: 'Admin' }]
+    : profile?.role === 'engineer'
+    ? [...BASE_NAV_TABS, { href: '/engineer', label: 'Work' }]
     : BASE_NAV_TABS
 
   return (
@@ -141,7 +137,7 @@ export default function Navbar() {
       h-14 flex-shrink-0 grid grid-cols-[auto_1fr_auto] items-center px-6 relative
       border-b border-[var(--glass-border)]
       bg-[var(--glass-bg)] backdrop-blur-xl
-      z-50 transition-colors duration-300
+      z-[10000] transition-colors duration-300
     ">
       {/* Brand */}
       <motion.div
