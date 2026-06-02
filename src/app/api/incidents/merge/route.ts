@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
+import { snapshotOnIncidentUpdated } from '@/lib/live-snapshot'
+import { logIncidentActivity, actorName } from '@/lib/incident-activity'
 import type { Incident } from '@/types'
 
 export const runtime = 'nodejs'
@@ -35,6 +37,7 @@ function incidentTechnologies(i: Incident) {
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth
+  const caller = auth
 
   try {
     const { target, source } = await req.json() as { target: Incident; source: Incident }
@@ -81,6 +84,45 @@ export async function POST(req: NextRequest) {
     await Promise.all(sourceAlarmIds.map(alarmId =>
       db.collection('alarms').doc(alarmId).update({ incidentId: target.incidentNumber }).catch(() => {})
     ))
+
+    // Mirror in liveSnapshot: target gains scope (and possibly urgency),
+    // source transitions to CLOSED.
+    const nextTarget: Incident = {
+      ...target,
+      siteIds:      unique([...incidentSites(target), ...incidentSites(source)]),
+      antennaIds:   unique([...incidentAntennas(target), ...incidentAntennas(source)]),
+      alarmIds:     unique([...incidentAlarms(target), ...incidentAlarms(source)]),
+      technologies: unique([...incidentTechnologies(target), ...incidentTechnologies(source)]),
+      assignees:    [...assigneesByUid.values()],
+      ...(shouldEscalate ? { urgency: source.urgency, priority: source.priority, impact: source.impact } : {}),
+    }
+    const nextSource: Incident = {
+      ...source,
+      status:       'CLOSED',
+      closedDate:   now,
+      resolvedDate: source.resolvedDate ?? now,
+      mergedInto:   target.incidentNumber,
+    }
+    await Promise.all([
+      snapshotOnIncidentUpdated(target, nextTarget, db),
+      snapshotOnIncidentUpdated(source, nextSource, db),
+    ])
+
+    const name = actorName(caller)
+    void logIncidentActivity(db, target.incidentNumber, {
+      type:      'merged',
+      actorUid:  caller.uid,
+      actorName: name,
+      message:   `Merged ${source.incidentNumber} into this incident`,
+      timestamp: now,
+    })
+    void logIncidentActivity(db, source.incidentNumber, {
+      type:      'merged',
+      actorUid:  caller.uid,
+      actorName: name,
+      message:   `Merged into ${target.incidentNumber}`,
+      timestamp: now,
+    })
 
     return NextResponse.json({ ok: true })
   } catch (error) {

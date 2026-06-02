@@ -14,6 +14,7 @@ import { useFilters, FilterSeverity } from './FilterProvider'
 import { cn } from '@/lib/utils'
 import { Switch } from "@/components/ui/interfaces-switch"
 import { canManageUsers, roleLabel } from '@/lib/roles'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
 
 export function ThemeToggle() {
   const { theme, toggle, isDark } = useTheme()
@@ -106,7 +107,7 @@ export default function Navbar() {
     return () => ro.disconnect()
   }, [user, pathname])
 
-  const isAuthPage = ['/login', '/register', '/verify-email'].includes(pathname)
+  const isAuthPage = ['/login', '/register', '/verify-email', '/forgot-password'].includes(pathname)
 
   if (!user || isAuthPage) {
     return null
@@ -282,6 +283,8 @@ export default function Navbar() {
         </div>
 
         <div className="h-6 w-[1px] bg-[var(--glass-border)] mx-1" />
+
+        <NotificationBell />
 
         <ThemeToggle />
 

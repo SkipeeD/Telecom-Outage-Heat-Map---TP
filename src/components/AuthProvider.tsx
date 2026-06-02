@@ -92,28 +92,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return
 
-    const isPublicRoute = ['/login', '/register', '/verify-email'].includes(pathname)
+    // Use window.location.pathname as the authoritative source — it always
+    // reflects the actual browser URL even when usePathname() lags behind
+    // during Turbopack's fast soft navigations.
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : pathname
+
+    const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password']
+    const LOGIN_ROUTES  = ['/login', '/register', '/verify-email']
+
+    const isPublicRoute = PUBLIC_ROUTES.includes(currentPath)
+    const isLoginRoute  = LOGIN_ROUTES.includes(currentPath)
     const isVerified = user?.emailVerified || (user && user.providerData.some(p => p.providerId === 'google.com'))
 
     if (user) {
       if (isVerified) {
-        // Set auth session cookie
         document.cookie = `auth-session=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
-        
-        // Immediate redirect to dashboard if on a public page
-        if (isPublicRoute) {
+        if (isLoginRoute) {
           router.replace('/dashboard')
-          // If the router is stuck, force with window
-          setTimeout(() => {
-            const currentPath = window.location.pathname
-            if (['/login', '/register', '/verify-email'].includes(currentPath)) {
-              window.location.href = '/dashboard'
-            }
-          }, 800)
         }
       } else {
         document.cookie = 'auth-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
-        if (pathname !== '/verify-email') {
+        if (currentPath !== '/verify-email') {
           router.replace('/verify-email')
         }
       }

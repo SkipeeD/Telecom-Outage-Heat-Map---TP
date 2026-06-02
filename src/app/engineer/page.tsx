@@ -1,17 +1,19 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
-import { getAllIncidents, sendChatMessage, resolveIncident, closeIncident, acknowledgeAssignedIncidents } from '@/lib/firestore'
+import { sendChatMessage, resolveIncident, closeIncident, acknowledgeAssignedIncidents, getIncidentHistory } from '@/lib/firestore'
+import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
 import { subscribeToMessages } from '@/lib/firestore-chat'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   LayoutDashboard, Wrench, Users, MessageSquare,
   AlertTriangle, CheckCircle2, Circle, ArrowRight,
-  Send, MapPin, Play, X,
+  Send, MapPin, Play, X, History,
 } from 'lucide-react'
+import { IncidentTimeline } from '@/components/incident/IncidentTimeline'
 import type { ChatMessage, Incident } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -478,9 +480,11 @@ interface IncidentsViewProps {
   selectedIncidentNumber: string | null
   onSelect: (num: string) => void
   profile: { uid: string; displayName?: string } | null
+  onIncidentResolved: (incidentNumber: string) => void
+  onIncidentClosed: (incidentNumber: string) => void
 }
 
-function IncidentsView({ incidents, loading, selectedIncidentNumber, onSelect, profile }: IncidentsViewProps) {
+function IncidentsView({ incidents, loading, selectedIncidentNumber, onSelect, profile, onIncidentResolved, onIncidentClosed }: IncidentsViewProps) {
   const router = useRouter()
   const [statusFilter, setStatusFilter] = useState<AssignFilter>('ALL')
   const [resolving, setResolving] = useState<string | null>(null)
@@ -491,6 +495,7 @@ function IncidentsView({ incidents, loading, selectedIncidentNumber, onSelect, p
     setResolving(incidentNumber)
     try {
       await resolveIncident(incidentNumber)
+      onIncidentResolved(incidentNumber)
     } finally {
       setResolving(null)
     }
@@ -511,6 +516,7 @@ function IncidentsView({ incidents, loading, selectedIncidentNumber, onSelect, p
     setResolving(incidentNumber)
     try {
       await closeIncident(incidentNumber)
+      onIncidentClosed(incidentNumber)
     } finally {
       setResolving(null)
     }
@@ -684,7 +690,8 @@ function IncidentsView({ incidents, loading, selectedIncidentNumber, onSelect, p
           </CardContent>
         </Card>
 
-        <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)] overflow-hidden sticky top-6">
+        <div className="flex flex-col gap-4 sticky top-6">
+        <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)] overflow-hidden">
           <CardHeader className="border-b border-[var(--glass-border)] pb-3">
             <div className="flex items-center gap-2">
               <Users className="size-3.5 text-[var(--accent)]" />
@@ -733,6 +740,27 @@ function IncidentsView({ incidents, loading, selectedIncidentNumber, onSelect, p
           </CardContent>
         </Card>
 
+        {/* Activity Timeline */}
+        {selectedIncident && (
+          <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)] overflow-hidden">
+            <CardHeader className="border-b border-[var(--glass-border)] pb-3">
+              <div className="flex items-center gap-2">
+                <History className="size-3.5 text-[var(--accent)]" />
+                <CardTitle className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-widest">Activity</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <IncidentTimeline
+                incidentNumber={selectedIncident.incidentNumber}
+                currentUid={profile?.uid}
+                currentName={profile?.displayName ?? profile?.uid}
+                allowNotes={true}
+              />
+            </CardContent>
+          </Card>
+        )}
+        </div>
+
       </motion.div>
     </motion.div>
   )
@@ -770,8 +798,8 @@ function ChatView({ incidents, loading, currentUid, currentName }: ChatViewProps
   useEffect(() => {
     if (!selectedIncident) return
     setMsgLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
-    setMsgError(null) // eslint-disable-line react-hooks/set-state-in-effect
-    setMessages([]) // eslint-disable-line react-hooks/set-state-in-effect
+    setMsgError(null)
+    setMessages([])
     const unsub = subscribeToMessages(
       selectedIncident.incidentNumber,
       msgs => { setMessages(msgs); setMsgLoading(false); setMsgError(null) },
@@ -807,7 +835,7 @@ function ChatView({ incidents, loading, currentUid, currentName }: ChatViewProps
 
     try {
       await sendChatMessage(selectedIncident.incidentNumber, text, currentUid, currentName)
-    } catch (err) {
+    } catch {
       setSendError('Message failed to send. Check your connection and try again.')
       setDraft(text)
       setMessages(prev => prev.filter(msg => msg.id !== pendingId))
@@ -1017,35 +1045,103 @@ function ChatView({ incidents, loading, currentUid, currentName }: ChatViewProps
 export default function EngineerPage() {
   const { profile, loading: authLoading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const incidentFromUrl = searchParams.get('incident')
 
-  const [incidents, setIncidents] = useState<Incident[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [view, setView]           = useState<View>('overview')
-  const [selectedIncidentNumber, setSelectedIncidentNumber] = useState<string | null>(null)
+  const [view, setView]           = useState<View>(incidentFromUrl ? 'incidents' : 'overview')
+  const [selectedIncidentNumber, setSelectedIncidentNumber] = useState<string | null>(incidentFromUrl)
   const [greeting]                = useState(getGreeting)
+
+  // When a notification navigates here with a new incident param, switch view
+  useEffect(() => {
+    if (incidentFromUrl) {
+      let cancelled = false
+      queueMicrotask(() => {
+        if (cancelled) return
+        setView('incidents')
+        setSelectedIncidentNumber(incidentFromUrl)
+      })
+      return () => {
+        cancelled = true
+      }
+    }
+  }, [incidentFromUrl])
+
+  // Live open incidents pushed via meta/liveSnapshot — no polling.
+  // Resolved/closed history for this engineer is fetched on demand from the
+  // history endpoint below (kept out of the live snapshot to bound its size).
+  const enableSnapshot = !authLoading && profile?.role === 'engineer'
+  const { openIncidents: allOpenIncidents, loading: snapshotLoading } = useLiveSnapshot(enableSnapshot)
+  const loading = enableSnapshot && snapshotLoading
+
+  const myOpenIncidents = useMemo<Incident[]>(() => {
+    if (!profile) return []
+    return allOpenIncidents.filter(i => (i.assignees ?? []).some(a => a.uid === profile.uid))
+  }, [allOpenIncidents, profile])
+
+  // Resolved/closed history for this engineer — fetched once on mount and
+  // refreshed on demand. Server cache (15 min) absorbs repeated loads.
+  const [myHistory, setMyHistory] = useState<Incident[]>([])
+  useEffect(() => {
+    if (!profile || profile.role !== 'engineer') return
+    let cancelled = false
+    void (async () => {
+      try {
+        const { incidents: hist } = await getIncidentHistory({ assigneeUid: profile.uid, limit: 50 })
+        if (!cancelled) setMyHistory(hist)
+      } catch (err) {
+        console.error('[engineer] history fetch failed', err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [profile])
+
+  const incidents = useMemo<Incident[]>(() => {
+    const merged = new Map<string, Incident>()
+    // History first, then live snapshot overwrites so the real-time state wins
+    for (const i of myHistory)       merged.set(i.incidentNumber, i)
+    for (const i of myOpenIncidents) merged.set(i.incidentNumber, i)
+    return Array.from(merged.values())
+  }, [myOpenIncidents, myHistory])
+
+  function handleIncidentResolved(incidentNumber: string) {
+    const resolvedDate = new Date().toISOString()
+    // Grab the incident from the live snapshot before it disappears
+    const live = myOpenIncidents.find(i => i.incidentNumber === incidentNumber)
+    setMyHistory(prev => {
+      const exists = prev.some(i => i.incidentNumber === incidentNumber)
+      if (exists) {
+        return prev.map(i =>
+          i.incidentNumber === incidentNumber
+            ? { ...i, status: 'RESOLVED' as const, resolvedDate, closedDate: null }
+            : i
+        )
+      }
+      return live ? [...prev, { ...live, status: 'RESOLVED' as const, resolvedDate, closedDate: null }] : prev
+    })
+  }
+
+  function handleIncidentClosed(incidentNumber: string) {
+    const closedDate = new Date().toISOString()
+    setMyHistory(prev => {
+      const exists = prev.some(i => i.incidentNumber === incidentNumber)
+      if (exists) {
+        return prev.map(i =>
+          i.incidentNumber === incidentNumber
+            ? { ...i, status: 'CLOSED' as const, closedDate }
+            : i
+        )
+      }
+      // Incident transitioned to RESOLVED mid-session — add it to history as CLOSED
+      const live = myOpenIncidents.find(i => i.incidentNumber === incidentNumber)
+      return live ? [...prev, { ...live, status: 'CLOSED' as const, closedDate }] : prev
+    })
+  }
 
   useEffect(() => {
     if (authLoading) return
     if (profile?.role !== 'engineer') router.replace('/dashboard')
   }, [authLoading, profile, router])
-
-  useEffect(() => {
-    if (authLoading || !profile || profile.role !== 'engineer') return
-    let cancelled = false
-
-    const fetchIncidents = async () => {
-      try {
-        const all = await getAllIncidents()
-        if (cancelled) return
-        setIncidents(all.filter(i => (i.assignees ?? []).some(a => a.uid === profile.uid)))
-        setLoading(false)
-      } catch { /* retry on next interval */ }
-    }
-
-    void fetchIncidents()
-    const id = setInterval(() => void fetchIncidents(), 10_000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [authLoading, profile])
 
   if (authLoading || profile?.role !== 'engineer') return null
 
@@ -1099,6 +1195,8 @@ export default function EngineerPage() {
                 selectedIncidentNumber={selectedIncidentNumber}
                 onSelect={setSelectedIncidentNumber}
                 profile={profile}
+                onIncidentResolved={handleIncidentResolved}
+                onIncidentClosed={handleIncidentClosed}
               />
             </motion.div>
           )}

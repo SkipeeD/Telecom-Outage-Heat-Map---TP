@@ -2,13 +2,14 @@
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { motion } from 'motion/react'
-import { getAntennas } from '@/lib/firestore'
+import { getAntennas, getAntenna } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useFilters, FilterSeverity } from '@/components/FilterProvider'
+import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
 import type { Antenna, AlarmSeverity, Technology } from '@/types'
 import { AntennaPopup } from '@/components/antenna/AntennaPopup'
 import { AntennaDetailsPanel } from '@/components/antenna/AntennaDetailsPanel'
@@ -25,27 +26,15 @@ const MapClient = dynamic(() => import('@/app/map/Map'), {
   )
 })
 
-const severityRank: Record<AlarmSeverity, number> = {
-  critical: 5,
-  major: 4,
-  minor: 3,
-  warning: 2,
-  ok: 1,
-}
-
-function getWorstStatus(antenna: Antenna): AlarmSeverity {
-  if (!antenna.cells || antenna.cells.length === 0) return 'ok'
-  return antenna.cells.reduce((prev, curr) => 
-    severityRank[curr.status] > severityRank[prev.status] ? curr : prev
-  ).status
-}
 
 function MapPageInner() {
   const { user, loading: authLoading } = useAuth()
   const { selectedSeverity, setCounts } = useFilters()
   const searchParams = useSearchParams()
   const focusAntennaId = searchParams.get('antennaId') ?? searchParams.get('selectSite')
-  const [antennas, setAntennas] = useState<Antenna[]>([])
+  // Topology positions are fetched ONCE per session — antenna locations don't
+  // change at runtime. Live severity comes from meta/liveSnapshot.
+  const [baseAntennas, setBaseAntennas] = useState<Antenna[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [popupAntenna, setPopupAntenna] = useState<Antenna | null>(null)
   const [popupAnchor, setPopupAnchor] = useState<Element | null>(null)
@@ -54,31 +43,65 @@ function MapPageInner() {
   const [weatherRisk, setWeatherRisk] = useState<Record<string, boolean>>({})
   const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
 
+  const { snapshot } = useLiveSnapshot(!!user)
+
+  // One-shot topology fetch — no polling. Severity will overlay from snapshot.
   useEffect(() => {
     if (!user) return
     let cancelled = false
-
-    const fetchAntennas = async () => {
+    void (async () => {
       try {
-        const data = await getAntennas()
-        if (cancelled) return
-        setAntennas(data)
-        const newCounts: Record<FilterSeverity, number> = { all: 0, critical: 0, major: 0, minor: 0, warning: 0, ok: 0 }
-        data.forEach(antenna => {
-          const status = getWorstStatus(antenna)
-          if (newCounts[status] !== undefined) newCounts[status]++
-          newCounts.all++
-        })
-        setCounts(newCounts)
+        const { antennas: data } = await getAntennas()
+        if (!cancelled) setBaseAntennas(data)
       } catch {
-        // silently retry
+        // Keep stale data visible — don't clear on error
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user])
+
+  // Overlay live severity onto the static topology. The map's pin colors use
+  // worst-severity-per-antenna, so we replace each cell's status with the
+  // snapshot value — full per-cell breakdown is fetched on click via
+  // /api/antennas/[id].
+  const antennas = useMemo<Antenna[]>(() => {
+    if (!snapshot) return baseAntennas
+    return baseAntennas.map(a => {
+      const sev = snapshot.antennaSeverity[a.id] ?? 'ok'
+      return {
+        ...a,
+        cells: a.cells.length > 0
+          ? a.cells.map(c => ({ ...c, status: sev, currentAlarm: undefined }))
+          : [{ technology: '4G' as Technology, status: sev }],
+      }
+    })
+  }, [baseAntennas, snapshot])
+
+  // Severity-filtered list for the map (when the user picks a severity in the
+  // filter bar). Counts always reflect ALL antennas, never filtered.
+  const filteredAntennas = useMemo(() => {
+    if (selectedSeverity === 'all') return antennas
+    return antennas.filter(a => a.cells.some(c => c.status === selectedSeverity))
+  }, [antennas, selectedSeverity])
+
+  // Counts driven by the snapshot. Absence in antennaSeverity = 'ok'.
+  useEffect(() => {
+    if (baseAntennas.length === 0) return
+    const counts: Record<FilterSeverity, number> = {
+      all: baseAntennas.length, ok: 0, critical: 0, major: 0, minor: 0, warning: 0,
+    }
+    const severityMap = snapshot?.antennaSeverity ?? {}
+    let nonOk = 0
+    for (const a of baseAntennas) {
+      const sev = severityMap[a.id]
+      if (sev && sev !== 'ok') {
+        counts[sev] = (counts[sev] ?? 0) + 1
+        nonOk++
       }
     }
-
-    void fetchAntennas()
-    const id = setInterval(() => void fetchAntennas(), 30_000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [user, setCounts])
+    counts.ok = baseAntennas.length - nonOk
+    setCounts(counts)
+  }, [baseAntennas, snapshot, setCounts])
 
   useEffect(() => {
     if (!user) return
@@ -108,10 +131,20 @@ function MapPageInner() {
     if (isDeselecting) {
       setPopupAntenna(null)
       setPopupAnchor(null)
-    } else {
-      setPopupAntenna(antenna)
-      setPopupAnchor(anchorEl)
+      return
     }
+    // Show the placeholder immediately for snappy UX, then fetch full cell
+    // breakdown from the cached single-antenna endpoint.
+    setPopupAntenna(antenna)
+    setPopupAnchor(anchorEl)
+    void (async () => {
+      try {
+        const full = await getAntenna(antenna.id)
+        setPopupAntenna(prev => (prev && prev.id === antenna.id ? full : prev))
+      } catch (err) {
+        console.error('[map] failed to fetch antenna detail', err)
+      }
+    })()
   }
 
   const handlePopupClose = () => {
@@ -125,6 +158,14 @@ function MapPageInner() {
     setDetailsTech(tech)
     setPopupAntenna(null)
     setPopupAnchor(null)
+    void (async () => {
+      try {
+        const full = await getAntenna(antenna.id)
+        setDetailsAntenna(prev => (prev && prev.id === antenna.id ? full : prev))
+      } catch (err) {
+        console.error('[map] failed to fetch antenna detail', err)
+      }
+    })()
   }
 
   const handleDetailsClose = () => {
@@ -152,7 +193,7 @@ function MapPageInner() {
         transition={{ duration: 0.45, ease: EASE }}
       >
         <MapClient
-          antennas={antennas}
+          antennas={filteredAntennas}
           selectedId={selectedId}
           focusAntennaId={focusAntennaId}
           activeFilters={activeFilters}

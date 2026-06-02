@@ -3,6 +3,8 @@ import type { NextRequest } from 'next/server'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
+import { snapshotOnIncidentCreated, snapshotOnIncidentUpdated } from '@/lib/live-snapshot'
+import { logIncidentActivity, actorName } from '@/lib/incident-activity'
 import type { Alarm, Antenna, AlarmSeverity, Incident, Technology } from '@/types'
 
 export const runtime = 'nodejs'
@@ -42,6 +44,7 @@ function priorityRank(priority: string): number {
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth
+  const caller = auth
 
   try {
     const { alarm, primaryAntenna, allAntennas } = await req.json() as {
@@ -106,11 +109,21 @@ export async function POST(req: NextRequest) {
         }),
         db.collection('alarms').doc(alarm.id).update({ incidentId: existing.incidentNumber }),
       ])
+
+      const next: Incident = {
+        ...existing,
+        siteIds:      Array.from(new Set([...(existing.siteIds ?? [existing.siteId]), ...scopeSiteIds])),
+        antennaIds:   Array.from(new Set([...(existing.antennaIds ?? [existing.antennaId]), ...scopeAntennaIds])),
+        alarmIds:     Array.from(new Set([...(existing.alarmIds ?? [existing.alarmId]), alarm.id])),
+        technologies: Array.from(new Set<Technology>([...(existing.technologies ?? [existing.technology]), alarm.technology as Technology])),
+        ...(shouldEscalate ? { urgency, priority: urgency, impact } : {}),
+      }
+      await snapshotOnIncidentUpdated(existing, next, db)
       return NextResponse.json({ incidentNumber: existing.incidentNumber })
     }
 
     const incidentNumber = `INC${Date.now()}`
-    await db.collection('incidents').doc(incidentNumber).set({
+    const newIncident: Incident = {
       incidentNumber,
       submitDate:   new Date().toISOString(),
       alarmId:      alarm.id,
@@ -129,8 +142,17 @@ export async function POST(req: NextRequest) {
       assignee:     '',
       assignees:    [],
       resolvedDate: null,
-    } satisfies Incident)
+    }
+    await db.collection('incidents').doc(incidentNumber).set(newIncident)
     await db.collection('alarms').doc(alarm.id).update({ incidentId: incidentNumber })
+    await snapshotOnIncidentCreated(newIncident, db)
+    void logIncidentActivity(db, incidentNumber, {
+      type:      'created',
+      actorUid:  caller.uid,
+      actorName: actorName(caller),
+      message:   `Incident created for site ${alarm.siteId} (${alarm.technology}, ${alarm.severity})`,
+      timestamp: newIncident.submitDate,
+    })
 
     return NextResponse.json({ incidentNumber })
   } catch (error) {

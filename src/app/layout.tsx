@@ -4,6 +4,8 @@ import { AuthProvider } from "@/components/AuthProvider";
 import { FilterProvider } from "@/components/FilterProvider";
 import Navbar from "@/components/Navbar";
 import { NameEntryDialog } from "@/components/NameEntryDialog";
+import { NotificationProvider } from "@/components/notifications/NotificationProvider";
+import { NotificationToaster } from "@/components/notifications/NotificationToaster";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 
@@ -30,14 +32,17 @@ export default function RootLayout({
       </head>
       <body className="h-full flex flex-col bg-bg-base text-text-primary" suppressHydrationWarning>
         <AuthProvider>
-          <FilterProvider>
-            <Navbar />
-            {/* Main Content Area */}
-            <main className="flex-1 relative overflow-auto">
-              {children}
-            </main>
-            <NameEntryDialog />
-          </FilterProvider>
+          <NotificationProvider>
+            <FilterProvider>
+              <Navbar />
+              {/* Main Content Area */}
+              <main className="flex-1 relative overflow-auto">
+                {children}
+              </main>
+              <NameEntryDialog />
+              <NotificationToaster />
+            </FilterProvider>
+          </NotificationProvider>
         </AuthProvider>
       </body>
       </html>

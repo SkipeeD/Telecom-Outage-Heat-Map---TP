@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { motion } from 'motion/react'
-import { incidentMatchesAlarm, getAntennas, getAllIncidents } from '@/lib/firestore'
+import { incidentMatchesAlarm, getAntennas } from '@/lib/firestore'
+import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
 import { useAuth } from '@/components/AuthProvider'
 import type { Antenna, Alarm, AlarmSeverity, Incident, Technology } from '@/types'
 import { ArrowLeft, Clock, Users, CheckCircle2, Search, MapPin } from 'lucide-react'
@@ -47,48 +48,51 @@ function DistributionContent() {
   const mode = (searchParams.get('mode') as 'severity' | 'technology') || (searchParams.get('tech') ? 'technology' : 'severity')
   
   const [antennas, setAntennas] = useState<Antenna[]>([])
-  const [incidents, setIncidents] = useState<Incident[]>([])
   const [search, setSearch] = useState('')
   const [severityFilter, setSeverityFilter] = useState<AlarmSeverity | 'ALL'>(initialSeverity)
   const [techFilter, setTechFilter] = useState<Technology | 'ALL'>(initialTech)
 
+  const { snapshot, openIncidents } = useLiveSnapshot(!!user)
+
+  // One-shot topology fetch — positions are static; live alarms come from
+  // snapshot.activeAlarms and the antennas map only provides geo metadata.
   useEffect(() => {
     if (!user) return
     let cancelled = false
-
-    const fetchAll = async () => {
+    void (async () => {
       try {
-        const [antennasData, incidentsData] = await Promise.all([getAntennas(), getAllIncidents()])
-        if (cancelled) return
-        setAntennas(antennasData)
-        setIncidents(incidentsData)
-      } catch { /* retry on next interval */ }
-    }
-
-    void fetchAll()
-    const id = setInterval(() => void fetchAll(), 30_000)
-    return () => { cancelled = true; clearInterval(id) }
+        const { antennas: data } = await getAntennas()
+        if (!cancelled) setAntennas(data)
+      } catch { /* keep stale */ }
+    })()
+    return () => { cancelled = true }
   }, [user])
 
+  const incidents = openIncidents
+  const activeAlarms = useMemo(() => snapshot?.activeAlarms ?? [], [snapshot])
+  const antennaById = useMemo(() => {
+    const m = new Map<string, Antenna>()
+    for (const a of antennas) m.set(a.id, a)
+    return m
+  }, [antennas])
+
   const items = useMemo(() => {
-    // 1. Flatten all active alarms from all antennas
-    const allActive = antennas.flatMap(a => 
-      (a.cells || [])
-        .filter(c => c.currentAlarm && !c.currentAlarm.resolved)
-        .map(c => {
-          const alarm = c.currentAlarm!
-          const incident = incidents.find(i => incidentMatchesAlarm(i, alarm))
-          const item: AlarmDisplayItem = {
-            ...alarm,
-            antennaName: a.name,
-            antennaId: a.id,
-            latitude: a.latitude,
-            longitude: a.longitude,
-            incident
-          }
-          return item
-        })
-    )
+    // 1. Flatten the live active-alarm list, joined with antenna geo metadata.
+    const allActive: AlarmDisplayItem[] = []
+    for (const alarm of activeAlarms) {
+      if (alarm.resolved) continue
+      const a = antennaById.get(alarm.antennaId)
+      if (!a) continue
+      const incident = incidents.find(i => incidentMatchesAlarm(i, alarm))
+      allActive.push({
+        ...alarm,
+        antennaName: a.name,
+        antennaId:   a.id,
+        latitude:    a.latitude,
+        longitude:   a.longitude,
+        incident,
+      })
+    }
 
     // 2. Filter logic
     const normalizedSearch = normalize(search)
@@ -111,7 +115,7 @@ function DistributionContent() {
       // Tertiary sort: time (newest first)
       return new Date(b.alarmTime).getTime() - new Date(a.alarmTime).getTime()
     })
-  }, [antennas, incidents, severityFilter, techFilter, search])
+  }, [activeAlarms, antennaById, incidents, severityFilter, techFilter, search])
 
   const handleGoToMap = (item: AlarmDisplayItem) => {
     router.push(`/map?selectSite=${item.antennaId}&lat=${item.latitude}&lon=${item.longitude}`)

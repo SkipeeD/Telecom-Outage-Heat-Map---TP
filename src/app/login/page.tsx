@@ -16,7 +16,6 @@ export default function LoginPage() {
           maxSize={1.2}
           particleDensity={80}
           className="w-full h-full"
-          particleColor="#7c6ff7"
           speed={1.5}
         />
       </div>

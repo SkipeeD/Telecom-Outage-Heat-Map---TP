@@ -28,6 +28,7 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
   const [pendingUids, setPendingUids] = useState<Set<string>>(new Set())
   const [saving, setSaving]           = useState(false)
   const [engLoaded, setEngLoaded]     = useState(false)
+  const [saveError, setSaveError]     = useState<string | null>(null)
 
   // Reset selection and load engineers when incident changes
   useEffect(() => {
@@ -62,12 +63,15 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
   async function handleSave() {
     if (!incident) return
     setSaving(true)
+    setSaveError(null)
     try {
       const next: IncidentAssignee[] = engineers
         .filter(e => pendingUids.has(e.uid))
         .map(e => ({ uid: e.uid, email: e.email, ...(e.displayName ? { displayName: e.displayName } : {}) }))
       await onSave(incident.incidentNumber, next)
       onClose()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save assignment')
     } finally {
       setSaving(false)
     }
@@ -259,11 +263,18 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
 
             {/* ── Footer ── */}
             <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-4 border-t border-[var(--glass-border)] bg-[var(--glass-bg)]">
-              <span className="font-mono text-[11px] text-[var(--text-muted)]">
-                {pendingUids.size === 0
-                  ? 'No engineers selected'
-                  : `${pendingUids.size} engineer${pendingUids.size !== 1 ? 's' : ''} selected`}
-              </span>
+              <div className="flex flex-col gap-1">
+                <span className="font-mono text-[11px] text-[var(--text-muted)]">
+                  {pendingUids.size === 0
+                    ? 'No engineers selected'
+                    : `${pendingUids.size} engineer${pendingUids.size !== 1 ? 's' : ''} selected`}
+                </span>
+                {saveError && (
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--alarm-critical)' }}>
+                    {saveError}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"

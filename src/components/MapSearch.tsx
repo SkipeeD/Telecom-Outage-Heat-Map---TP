@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useRef, useMemo, useEffect } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { Search } from 'lucide-react'
-import type { Antenna, Incident } from '@/types'
-import { getAllIncidents } from '@/lib/firestore'
+import type { Antenna } from '@/types'
+import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
 
 function normalize(str: string) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -24,12 +24,11 @@ interface Props {
 export function MapSearch({ antennas, onSelect }: Props) {
   const [expanded, setExpanded]   = useState(false)
   const [query, setQuery]         = useState('')
-  const [incidents, setIncidents] = useState<Incident[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    getAllIncidents().then(setIncidents).catch(() => {})
-  }, [])
+  // Open incidents come from the same liveSnapshot subscription the map page
+  // already maintains — Firestore reuses one listener per doc, so this is free.
+  const { openIncidents: incidents } = useLiveSnapshot(true)
 
   const results = useMemo((): Result[] => {
     const q = normalize(query.trim())

@@ -12,7 +12,8 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 
-import { getAllIncidents } from '@/lib/firestore'
+import { getIncidentHistory } from '@/lib/firestore'
+import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 
@@ -36,28 +37,49 @@ function EngineerContent() {
   const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
-  /* 
-   * Real-time Sync Fix:
-   * Replaced the manual /api/dashboard/summary fetch with a direct Firestore subscription.
-   * This fixes the bug where assignments wouldn't show up until a manual refresh or 5-min cache expiry.
-   */
+  // Live open incidents arrive via meta/liveSnapshot (no polling).
+  const { openIncidents, loading: snapshotLoading } = useLiveSnapshot(!!user)
+
+  // Historical resolved/closed incidents refresh when the time-range changes.
+  // The endpoint is server-cached 15 min so toggling between ranges is cheap.
   useEffect(() => {
     if (!user) return
     let cancelled = false
+    const days = timeRange === '30d' ? 30 : timeRange === '3m' ? 90 : timeRange === '6m' ? 180 : 365
+    const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
 
-    const fetchIncidents = async () => {
+    setHistoryLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
+    void (async () => {
       try {
-        const data = await getAllIncidents()
-        if (cancelled) return
-        setIncidents(data)
-        setLoading(false)
-      } catch { /* retry on next interval */ }
-    }
+        // Page through the history endpoint for the selected window.
+        const collected: Incident[] = []
+        let cursor: string | undefined
+        do {
+          const page = await getIncidentHistory({ cursor, sinceIso, limit: 50 })
+          collected.push(...page.incidents)
+          cursor = page.nextCursor ?? undefined
+          // Hard ceiling to avoid runaway pagination for the longest range.
+          if (collected.length >= 500) break
+        } while (cursor)
+        if (!cancelled) {
+          setHistory(collected)
+          setHistoryLoading(false)
+        }
+      } catch (err) {
+        console.error('[dashboard/engineers] history fetch failed', err)
+        if (!cancelled) setHistoryLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user, timeRange])
 
-    void fetchIncidents()
-    const id = setInterval(() => void fetchIncidents(), 10_000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [user])
+  const loading = snapshotLoading || historyLoading
+  const incidents = useMemo<Incident[]>(() => {
+    const merged = new Map<string, Incident>()
+    for (const i of openIncidents) merged.set(i.incidentNumber, i)
+    for (const i of history)       merged.set(i.incidentNumber, i)
+    return Array.from(merged.values())
+  }, [openIncidents, history])
 
   const engineers = useMemo(() => {
     const map = new Map<string, IncidentAssignee>()

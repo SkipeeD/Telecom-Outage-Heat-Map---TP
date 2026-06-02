@@ -5,13 +5,8 @@ export function proxy(request: NextRequest) {
   const authSession = request.cookies.get('auth-session')
   const { pathname } = request.nextUrl
 
-  const publicRoutes = ['/login', '/register']
+  const publicRoutes = ['/login', '/register', '/verify-email', '/forgot-password']
   const isPublicRoute = publicRoutes.includes(pathname)
-
-  // Allow verify-email for everyone
-  if (pathname === '/verify-email') {
-    return NextResponse.next()
-  }
 
   // If no auth cookie and not on a public route, redirect to login
   if (!authSession && !isPublicRoute) {
