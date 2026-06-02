@@ -4,6 +4,7 @@ import { getAdminDb } from '@/lib/firebase-admin'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
 import { snapshotOnIncidentUpdated } from '@/lib/live-snapshot'
 import { logIncidentActivity, actorName } from '@/lib/incident-activity'
+import { sendAssignmentNotification } from '@/lib/email'
 import type { Incident } from '@/types'
 
 export const runtime = 'nodejs'
@@ -116,6 +117,20 @@ export async function POST(req: NextRequest) {
       message:   `Merged ${source.incidentNumber} into this incident`,
       timestamp: now,
     })
+
+    // Notify engineers from the source incident that they are now assigned to the target incident
+    const targetUidSet = new Set((target.assignees ?? []).map(a => a.uid))
+    for (const a of (source.assignees ?? [])) {
+      if (!targetUidSet.has(a.uid)) {
+        void sendAssignmentNotification({
+          engineerEmail:  a.email,
+          incidentNumber: target.incidentNumber,
+          location:       nextTarget.siteIds?.join(', ') || nextTarget.siteId || 'Unknown',
+          urgency:        nextTarget.urgency || 'N/A',
+        })
+      }
+    }
+
     void logIncidentActivity(db, source.incidentNumber, {
       type:      'merged',
       actorUid:  caller.uid,

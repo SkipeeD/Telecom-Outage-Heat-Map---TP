@@ -4,6 +4,7 @@ import { getAdminDb } from '@/lib/firebase-admin'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
 import { snapshotOnIncidentUpdated } from '@/lib/live-snapshot'
 import { logIncidentActivity, actorName } from '@/lib/incident-activity'
+import { sendAssignmentNotification } from '@/lib/email'
 import type { Incident, IncidentAssignee } from '@/types'
 
 export const runtime = 'nodejs'
@@ -52,6 +53,14 @@ export async function POST(req: NextRequest) {
           actorName: name,
           message:   `Assigned ${a.displayName ?? a.email} to this incident`,
           timestamp: now,
+        })
+
+        // Notify via email
+        void sendAssignmentNotification({
+          engineerEmail:  a.email,
+          incidentNumber: incidentNumber,
+          location:       prev.siteIds?.join(', ') || prev.siteId || 'Unknown',
+          urgency:        prev.urgency || 'N/A',
         })
       }
     }
