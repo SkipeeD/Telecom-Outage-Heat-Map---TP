@@ -21,10 +21,16 @@ const normalize = (str: string) =>
 
 function EngineerContent() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
   
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!authLoading && profile && profile.role !== 'admin') {
+      router.replace('/dashboard')
+    }
+  }, [profile, authLoading, router])
   const [search, setSearch] = useState('')
   const [selectedEngineer, setSelectedEngineer] = useState<string | 'ALL'>('ALL')
   const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
@@ -110,6 +116,14 @@ function EngineerContent() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  if (authLoading || (profile && profile.role !== 'admin')) {
+    return (
+      <div className="flex h-[60vh] w-full items-center justify-center text-[var(--text-muted)] font-mono text-xs uppercase tracking-widest animate-pulse">
+        Checking clearance...
+      </div>
+    )
   }
 
   return (

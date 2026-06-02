@@ -13,7 +13,7 @@ import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary, Incid
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import {
-  Activity, ShieldAlert, CheckCircle2, Zap, Globe, Download, Clock, History,
+  Activity, ShieldAlert, CheckCircle2, Zap, Globe, Download, History, Wrench,
   ArrowRight, Cloud, CloudRain, Sun, Wind, Thermometer, LucideIcon, MapPin, Users, RefreshCw
 } from 'lucide-react'
 import { TECHS, sevColorVar, techColorVar, relTime, formatDuration } from '@/lib/antenna-helpers'
@@ -84,12 +84,13 @@ function getWorstStatus(antenna: Antenna): AlarmSeverity {
 }
 
 export default function DashboardPage() {
-  const { user, loading: authLoading } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
+  const isAdmin = profile?.role === 'admin'
+  const isEngineer = profile?.role === 'engineer'
   const { theme } = useTheme()
   const router = useRouter()
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
-  const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
   
@@ -157,7 +158,6 @@ export default function DashboardPage() {
         if (cancelled) return
 
         setResolvedAlarms(summary.resolvedAlarms)
-        setLongLivedAlarms(summary.longLivedAlarms)
         setIncidents(summary.incidents)
       } catch {
         // dashboard history is non-critical; live topology stays active
@@ -170,6 +170,22 @@ export default function DashboardPage() {
       cancelled = true
       window.clearInterval(id)
     }
+  }, [user])
+
+  // New: Fetch real-time incidents directly to bypass dashboard summary cache (5m).
+  // This ensures engineer workload and assignment changes show up immediately.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    const fetchRealTimeIncidents = async () => {
+      try {
+        const data = await getAllIncidents()
+        if (!cancelled) setIncidents(data)
+      } catch { /* non-critical */ }
+    }
+    void fetchRealTimeIncidents()
+    const id = setInterval(() => void fetchRealTimeIncidents(), 15_000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [user])
 
   const fetchAiPrediction = useCallback(async (details: CityWeatherDetail[]) => {
@@ -299,27 +315,109 @@ export default function DashboardPage() {
       return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
     }
 
-    const dailyStats: Record<string, { ts: number; created: number; resolved: number }> = {}
+    const dailyStats: Record<string, { ts: number; created: number; resolved: number; mttrSumMs: number; resolvedCount: number }> = {}
+    
+    // Track engineer workload for utilization chart (Active incidents per engineer)
+    const engineerWorkload: Record<string, { name: string; count: number }> = {}
+
     incidents.forEach(i => {
+      // First, ensure all assignees exist in our workload map (even with 0 count)
+      (i.assignees || []).forEach(a => {
+        const name = a.displayName || a.email.split('@')[0]
+        if (!engineerWorkload[a.uid]) {
+          engineerWorkload[a.uid] = { name, count: 0 }
+        }
+      })
+
+      // 1. Creation Stats: Only count if submitDate is within the selected timeRange
       const submitTs = new Date(i.submitDate).getTime()
-      if (submitTs < cutoff) return
-      const label = dateLabel(i.submitDate)
-      if (!dailyStats[label]) dailyStats[label] = { ts: submitTs, created: 0, resolved: 0 }
-      dailyStats[label].created++
+      if (submitTs >= cutoff) {
+        const label = dateLabel(i.submitDate)
+        if (!dailyStats[label]) {
+          dailyStats[label] = { ts: submitTs, created: 0, resolved: 0, mttrSumMs: 0, resolvedCount: 0 }
+        }
+        dailyStats[label].created++
+      }
+      
+      // 2. Engineer Utilization: Count active incidents for each assigned engineer
+      if (i.status === 'ASSIGNED' || i.status === 'IN PROGRESS') {
+        (i.assignees || []).forEach(a => {
+          engineerWorkload[a.uid].count++
+        })
+      }
+
+      // 3. Resolution Stats & MTTR Logic:
+      // We check if the incident was resolved WITHIN the selected timeRange, 
+      // regardless of when it was originally created.
       if ((i.status === 'RESOLVED' || i.status === 'CLOSED') && (i.resolvedDate || i.closedDate)) {
-        const resLabel = dateLabel(i.resolvedDate || i.closedDate!)
-        if (!dailyStats[resLabel]) dailyStats[resLabel] = { ts: new Date(i.resolvedDate || i.closedDate!).getTime(), created: 0, resolved: 0 }
-        dailyStats[resLabel].resolved++
+        const resDate = i.resolvedDate || i.closedDate!
+        const resTs = new Date(resDate).getTime()
+        
+        if (resTs >= cutoff) {
+          const resLabel = dateLabel(resDate)
+          if (!dailyStats[resLabel]) {
+            dailyStats[resLabel] = { ts: resTs, created: 0, resolved: 0, mttrSumMs: 0, resolvedCount: 0 }
+          }
+          dailyStats[resLabel].resolved++
+          
+          // Only calculate MTTR if we have a valid submission date to compare against
+          if (i.submitDate) {
+            const mttrMs = resTs - submitTs
+            dailyStats[resLabel].mttrSumMs += mttrMs
+            dailyStats[resLabel].resolvedCount++
+          }
+        }
       }
     })
 
+    // Format the combined performance data for AreaChart
     const resolvedChartData = Object.entries(dailyStats)
-      .map(([date, { ts, created, resolved }]) => ({ date, ts, created, resolved }))
+      .map(([date, { ts, created, resolved, mttrSumMs, resolvedCount }]) => ({ 
+        date, 
+        ts, 
+        created, 
+        resolved,
+        // Mean Time To Resolve in hours (Average)
+        mttrHours: resolvedCount > 0 ? Number((mttrSumMs / resolvedCount / 3600000).toFixed(1)) : 0
+      }))
       .sort((a, b) => a.ts - b.ts)
-      .map(({ date, created, resolved }) => ({ date, created, resolved }))
+      .map(({ date, created, resolved, mttrHours }) => ({ date, created, resolved, mttrHours }))
 
-    return { total, alarms, ok, pieData, barData, resolvedChartData }
+    // Format engineer utilization for BarChart
+    const utilizationData = Object.values(engineerWorkload)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10) // Show top 10 busy engineers
+
+    // Log the calculated data for debugging in development
+    if (process.env.NODE_ENV === 'development') {
+       console.debug('Utilization Debug:', { incidentsCount: incidents.length, workload: engineerWorkload })
+    }
+
+    return { total, alarms, ok, pieData, barData, resolvedChartData, utilizationData }
   }, [antennas, incidents, timeRange])
+
+  const myIncidents = useMemo(() => {
+    if (!profile || profile.role !== 'engineer') return []
+    const now = new Date().getTime()
+    // Stale Threshold: 12 hours (in milliseconds)
+    const STALE_MS = 12 * 60 * 60 * 1000
+
+    return incidents.filter(i => 
+      (i.assignees || []).some(a => a.uid === profile.uid)
+    )
+    .map(i => {
+      // Logic for "Stale" alerts: If an incident has been IN PROGRESS 
+      // for more than 12 hours, mark it for high visibility.
+      const isStale = i.status === 'IN PROGRESS' && (now - new Date(i.submitDate).getTime() > STALE_MS)
+      return { ...i, isStale }
+    })
+    .sort((a, b) => {
+      // Sort stale tasks to the top so engineers address them immediately
+      if (a.isStale && !b.isStale) return -1
+      if (!a.isStale && b.isStale) return 1
+      return new Date(b.submitDate).getTime() - new Date(a.submitDate).getTime()
+    })
+  }, [incidents, profile])
 
   const exportResolvedToExcel = () => {
     if (resolvedAlarms.length === 0) return
@@ -343,32 +441,7 @@ export default function DashboardPage() {
     document.body.removeChild(link)
   }
 
-  const longestActive = useMemo(() => {
-    let oldest: (Alarm & { antennaName: string }) | null = null
-    for (const a of antennas) {
-      for (const c of a.cells || []) {
-        if (!c.currentAlarm || c.currentAlarm.resolved) continue
-        if (!oldest || new Date(c.currentAlarm.alarmTime) < new Date(oldest.alarmTime)) {
-          oldest = { ...c.currentAlarm, antennaName: a.name }
-        }
-      }
-    }
-    return oldest
-  }, [antennas])
-
   if (authLoading) return null
-
-  const activeAlerts = antennas
-    .flatMap(a => (a.cells || [])
-      .filter(c => c.currentAlarm && !c.currentAlarm.resolved)
-      .map(c => {
-        const alarm = c.currentAlarm!
-        const incident = incidents.find(i => incidentMatchesAlarm(i, alarm))
-        return { ...alarm, antennaName: a.name, incident }
-      })
-    )
-    .sort((a, b) => new Date(b.alarmTime).getTime() - new Date(a.alarmTime).getTime())
-    .slice(0, 8)
 
   return (
     <div className="min-h-full bg-[var(--bg-base)] p-6 md:p-8 transition-colors duration-300">
@@ -379,13 +452,29 @@ export default function DashboardPage() {
         className="max-w-7xl mx-auto space-y-8"
       >
         {/* Header */}
-        <motion.div variants={itemVariants} className="flex flex-col gap-1">
-          <h1 className="text-[28px] font-semibold text-[var(--text-primary)]">
-            Network Operations Center
-          </h1>
-          <p className="text-[14px] text-[var(--text-secondary)]">
-            Real-time infrastructure health and outage monitoring dashboard.
-          </p>
+        <motion.div variants={itemVariants} className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-[28px] font-semibold text-[var(--text-primary)]">
+              Network Operations Center
+            </h1>
+            <p className="text-[14px] text-[var(--text-secondary)]">
+              Real-time infrastructure health and outage monitoring dashboard.
+            </p>
+          </div>
+          <Button
+            onClick={() => router.push('/dashboard/alarms')}
+            className="
+              shrink-0 flex items-center gap-2
+              bg-[var(--accent)] hover:bg-[var(--accent-bright)]
+              text-white text-[13px] font-medium
+              rounded-[var(--radius-md)]
+              shadow-[var(--shadow-glow)]
+              transition-all duration-200
+            "
+          >
+            <ShieldAlert className="size-4" />
+            View All Alarms
+          </Button>
         </motion.div>
 
         {/* Quick Stats */}
@@ -577,111 +666,279 @@ export default function DashboardPage() {
           </motion.div>        </div>
 
         {/* Resolution Performance Chart & Export */}
-        <motion.div variants={itemVariants}>
-          <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="flex flex-col gap-1">
-                <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest flex items-center gap-2">
-                  <History className="size-4 text-[var(--alarm-ok)]" />
-                  Resolution Performance
-                </CardTitle>
-                <div className="flex items-center gap-2 mt-1">
-                  {(['30d', '3m', '6m', '1y'] as const).map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setTimeRange(r)}
-                      className={cn(
-                        "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-tighter transition-all",
-                        timeRange === r
-                          ? "bg-[var(--accent)] text-white shadow-[0_0_8px_var(--accent)]"
-                          : "bg-[var(--glass-bg)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--glass-border)]"
-                      )}
-                    >
-                      {r === '30d' ? '30 Days' : r === '3m' ? '3 Months' : r === '6m' ? '6 Months' : '1 Year'}
-                    </button>
-                  ))}
+        {isAdmin && (
+          <motion.div variants={itemVariants}>
+            <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div className="flex flex-col gap-1">
+                  <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest flex items-center gap-2">
+                    <History className="size-4 text-[var(--alarm-ok)]" />
+                    Resolution Performance
+                  </CardTitle>
+                  <div className="flex items-center gap-2 mt-1">
+                    {(['30d', '3m', '6m', '1y'] as const).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setTimeRange(r)}
+                        className={cn(
+                          "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-tighter transition-all",
+                          timeRange === r
+                            ? "bg-[var(--accent)] text-white shadow-[0_0_8px_var(--accent)]"
+                            : "bg-[var(--glass-bg)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--glass-border)]"
+                        )}
+                      >
+                        {r === '30d' ? '30 Days' : r === '3m' ? '3 Months' : r === '6m' ? '6 Months' : '1 Year'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => router.push('/dashboard/engineers')}
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => router.push('/dashboard/engineers')}
+                    className="h-8 text-[var(--accent)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 text-[10px] uppercase tracking-widest gap-2 font-bold"
+                  >
+                    <Users className="size-3.5" />
+                    Engineer Details
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportResolvedToExcel}
+                    className="h-8 bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[10px] uppercase tracking-widest gap-2"
+                  >
+                    <Download className="size-3.5" />
+                    Export Report (CSV)
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="h-[240px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={stats.resolvedChartData} key={`${theme}-resolved`} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorResolved" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={getCSSVar('--alarm-ok')} stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor={getCSSVar('--alarm-ok')} stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorCreated" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={getCSSVar('--alarm-major')} stopOpacity={0.1}/>
+                        <stop offset="95%" stopColor={getCSSVar('--alarm-major')} stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={getCSSVar('--border')} />
+                    <XAxis
+                      dataKey="date"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: getCSSVar('--text-muted'), fontSize: 9, fontFamily: 'var(--font-mono)' }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: getCSSVar('--text-muted'), fontSize: 9, fontFamily: 'var(--font-mono)' }}
+                    />
+                    {/* Secondary Y-Axis for MTTR (Hours) */}
+                    <YAxis 
+                      yAxisId="right" 
+                      orientation="right" 
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: 'var(--accent)', fontSize: 9, fontFamily: 'var(--font-mono)' }}
+                      unit="h"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: getCSSVar('--bg-overlay'),
+                        border: `1px solid ${getCSSVar('--glass-border')}`,
+                        borderRadius: 'var(--radius-md)',
+                        color: getCSSVar('--text-primary'),
+                        fontSize: '11px',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                      itemStyle={{ color: getCSSVar('--text-primary') }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="created"
+                      stroke={getCSSVar('--alarm-major')}
+                      fillOpacity={1}
+                      fill="url(#colorCreated)"
+                      strokeWidth={2}
+                      name="New"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="resolved"
+                      stroke={getCSSVar('--alarm-ok')}
+                      fillOpacity={1}
+                      fill="url(#colorResolved)"
+                      strokeWidth={2}
+                      name="Resolved"
+                    />
+                    {/* MTTR Trend Line: Shows average time to resolve incidents in hours */}
+                    <Area
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="mttrHours"
+                      stroke="var(--accent)"
+                      fill="transparent"
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      name="Avg MTTR (Hrs)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* Engineer Utilization (Admin Only) */}
+        {isAdmin && (
+          <motion.div variants={itemVariants}>
+            <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div className="flex flex-col gap-1">
+                  <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest flex items-center gap-2">
+                    <Users className="size-4 text-[var(--accent)]" />
+                    Engineer Utilization
+                  </CardTitle>
+                  <p className="text-[10px] text-[var(--text-muted)]">Active incidents currently assigned per engineer</p>
+                </div>
+              </CardHeader>
+              <CardContent className="h-[240px]">
+                {stats.utilizationData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart 
+                      layout="vertical" 
+                      data={stats.utilizationData} 
+                      margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke={getCSSVar('--border')} />
+                      <XAxis 
+                        type="number" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: getCSSVar('--text-muted'), fontSize: 9, fontFamily: 'var(--font-mono)' }}
+                        allowDecimals={false}
+                      />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: getCSSVar('--text-primary'), fontSize: 10, fontWeight: 'bold' }}
+                        width={80}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'var(--glass-hover)' }}
+                        contentStyle={{
+                          background: getCSSVar('--bg-overlay'),
+                          border: `1px solid ${getCSSVar('--glass-border')}`,
+                          borderRadius: 'var(--radius-md)',
+                          fontSize: '11px',
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                      />
+                      <Bar 
+                        dataKey="count" 
+                        fill="var(--accent)" 
+                        radius={[0, 4, 4, 0]} 
+                        barSize={12} 
+                        name="Active Incidents"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center opacity-40">
+                    <Users className="size-8 mb-2" />
+                    <p className="text-[11px] uppercase tracking-widest font-mono">No active assignments found</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* My Active Assignments (Engineer Only) */}
+        {isEngineer && (
+          <motion.div variants={itemVariants}>
+            <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div className="flex flex-col gap-1">
+                  <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest flex items-center gap-2">
+                    <Wrench className="size-4 text-[var(--accent)]" />
+                    My Active Assignments
+                  </CardTitle>
+                  <p className="text-[10px] text-[var(--text-muted)]">Incidents currently assigned to you for resolution</p>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => router.push('/engineer')}
                   className="h-8 text-[var(--accent)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 text-[10px] uppercase tracking-widest gap-2 font-bold"
                 >
-                  <Users className="size-3.5" />
-                  Engineer Details
+                  <ArrowRight className="size-3.5" />
+                  My Workroom
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={exportResolvedToExcel}
-                  className="h-8 bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[10px] uppercase tracking-widest gap-2"
-                >
-                  <Download className="size-3.5" />
-                  Export Report (CSV)
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="h-[240px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats.resolvedChartData} key={`${theme}-resolved`} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorResolved" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={getCSSVar('--alarm-ok')} stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor={getCSSVar('--alarm-ok')} stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorCreated" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={getCSSVar('--alarm-major')} stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor={getCSSVar('--alarm-major')} stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={getCSSVar('--border')} />
-                  <XAxis
-                    dataKey="date"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: getCSSVar('--text-muted'), fontSize: 9, fontFamily: 'var(--font-mono)' }}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: getCSSVar('--text-muted'), fontSize: 9, fontFamily: 'var(--font-mono)' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: getCSSVar('--bg-overlay'),
-                      border: `1px solid ${getCSSVar('--glass-border')}`,
-                      borderRadius: 'var(--radius-md)',
-                      color: getCSSVar('--text-primary'),
-                      fontSize: '11px',
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                    itemStyle={{ color: getCSSVar('--text-primary') }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="created"
-                    stroke={getCSSVar('--alarm-major')}
-                    fillOpacity={1}
-                    fill="url(#colorCreated)"
-                    strokeWidth={2}
-                    name="Incidents"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="resolved"
-                    stroke={getCSSVar('--alarm-ok')}
-                    fillOpacity={1}
-                    fill="url(#colorResolved)"
-                    strokeWidth={2}
-                    name="Resolved"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </motion.div>
+              </CardHeader>
+              <CardContent>
+                {myIncidents.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {myIncidents.slice(0, 4).map(inc => (
+                      <div 
+                        key={inc.incidentNumber}
+                        className={cn(
+                          "p-3 rounded-[var(--radius-md)] bg-[var(--glass-hover)] border transition-all cursor-pointer flex flex-col gap-2 relative overflow-hidden group",
+                          // Apply distinct visual style for STALE incidents (>12h)
+                          inc.isStale 
+                            ? "border-[var(--alarm-major)]/50 shadow-[0_0_12px_var(--alarm-major)]/10" 
+                            : "border-[var(--glass-border)] hover:border-[var(--accent)]"
+                        )}
+                        onClick={() => router.push(`/engineer?incident=${inc.incidentNumber}`)}
+                      >
+                        {/* Stale Badge overlay */}
+                        {inc.isStale && (
+                          <div className="absolute top-0 right-0 px-2 py-0.5 bg-[var(--alarm-major)] text-white text-[8px] font-bold uppercase tracking-tighter rounded-bl-md z-10 animate-pulse">
+                            Stale Task
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px] font-bold text-[var(--text-primary)]">{inc.incidentNumber}</span>
+                          <span className={cn(
+                            "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest",
+                            inc.priority.includes('1') || inc.priority.includes('2') 
+                              ? "bg-[var(--alarm-critical)]/20 text-[var(--alarm-critical)]" 
+                              : "bg-[var(--accent)]/20 text-[var(--accent)]"
+                          )}>
+                            {inc.priority.split('-')[1] || inc.priority}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[var(--text-secondary)] line-clamp-1">{inc.impact}</div>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[10px] font-mono text-[var(--text-muted)]">{(inc.siteIds || [inc.siteId]).slice(0, 3).join(', ')}{ (inc.siteIds?.length > 3) ? '...' : ''}</span>
+                          <span className={cn(
+                            "text-[10px] font-medium",
+                            inc.isStale ? "text-[var(--alarm-major)]" : "text-[var(--text-muted)]"
+                          )}>
+                            {relTime(inc.submitDate)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-8 text-center">
+                    <CheckCircle2 className="size-8 text-[var(--alarm-ok)] mx-auto mb-2 opacity-20" />
+                    <p className="text-[11px] text-[var(--text-muted)] uppercase tracking-widest font-mono">No active assignments</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Weather Impact Analysis */}
         <motion.div variants={itemVariants}>
@@ -931,234 +1188,6 @@ export default function DashboardPage() {
             </motion.div>
         )}
 
-        {/* Chronic Alarms */}
-        <motion.div variants={itemVariants}>
-          <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="flex flex-col gap-1">
-                <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest flex items-center gap-2">
-                  <Clock className="size-4 text-[var(--alarm-major)]" />
-                  Chronic Alarms
-                </CardTitle>
-                <p className="text-[10px] text-[var(--text-muted)]">Resolved alarms active for more than 24 hours</p>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {longestActive && (
-                <div
-                  className="flex items-center gap-3 rounded-[var(--radius-md)] px-4 py-3 mb-4 text-[12px]"
-                  style={{
-                    background: 'rgba(240,79,79,0.08)',
-                    border: '1px solid rgba(240,79,79,0.25)',
-                  }}
-                >
-                  <div className="size-2 rounded-full animate-pulse bg-[var(--alarm-critical)]" />
-                  <span className="text-[var(--alarm-critical)] font-semibold">{longestActive.antennaName}</span>
-                  <span className="text-[var(--text-muted)] font-mono text-[10px]">{longestActive.siteId} · {longestActive.technology}</span>
-                  <span className="text-[var(--text-secondary)] ml-auto font-mono text-[10px]">
-                    Active since {relTime(longestActive.alarmTime)}
-                  </span>
-                </div>
-              )}
-              {longLivedAlarms.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[11px] font-mono">
-                    <thead>
-                      <tr className="text-[var(--text-muted)] uppercase tracking-widest text-[9px] border-b border-[var(--glass-border)]">
-                        <th className="text-left pb-2 pr-4">Site</th>
-                        <th className="text-left pb-2 pr-4">Tech</th>
-                        <th className="text-left pb-2 pr-4">Severity</th>
-                        <th className="text-left pb-2 pr-4">Alarm</th>
-                        <th className="text-right pb-2">Duration</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {longLivedAlarms.map((alarm) => {
-                        const ms = alarm.durationMs ?? 0
-                        const durationColor =
-                          ms >= 3 * 24 * 60 * 60_000
-                            ? 'var(--alarm-critical)'
-                            : ms >= 1 * 24 * 60 * 60_000
-                            ? 'var(--alarm-major)'
-                            : 'var(--text-secondary)'
-                        return (
-                          <tr
-                            key={alarm.id}
-                            className="border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors"
-                          >
-                            <td className="py-2.5 pr-4 text-[var(--text-primary)]">{alarm.siteId}</td>
-                            <td className="py-2.5 pr-4 text-[var(--text-secondary)]">{alarm.technology}</td>
-                            <td className="py-2.5 pr-4">
-                              <span
-                                className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest font-bold"
-                                style={{
-                                  color: getCSSVar(sevColorVar[alarm.severity]),
-                                  background: `${getCSSVar(sevColorVar[alarm.severity])}22`,
-                                }}
-                              >
-                                {alarm.severity}
-                              </span>
-                            </td>
-                            <td className="py-2.5 pr-4 text-[var(--text-muted)] max-w-[280px] truncate">{alarm.text}</td>
-                            <td className="py-2.5 text-right font-bold" style={{ color: durationColor }}>
-                              {formatDuration(ms)}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="py-10 text-center">
-                  <CheckCircle2 className="size-8 text-[var(--alarm-ok)] mx-auto mb-3 opacity-20" />
-                  <p className="text-[12px] text-[var(--text-muted)] font-mono uppercase tracking-widest">
-                    No chronic alarms in the last 24h
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-        
-
-        {/* System Logs / Recent Alerts */}
-        <motion.div variants={itemVariants}>
-          <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-[13px] font-medium text-[var(--text-primary)] uppercase tracking-widest">
-                Live Network Alerts
-              </CardTitle>
-              <Activity className="size-4 text-[var(--alarm-critical)] animate-pulse" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {activeAlerts.map((alarm) => {
-                  const assignees = alarm.incident?.assignees ?? []
-                  const alarmAntenna = antennas.find(a =>
-                    (a.cells || []).some(c => c.currentAlarm?.id === alarm.id)
-                  )
-                  const alarmCity = alarmAntenna
-                    ? cityForAntenna(alarmAntenna.latitude, alarmAntenna.longitude)
-                    : null
-                  const cityWeather = alarmCity
-                    ? weatherDetails.find(w => w.city === alarmCity)
-                    : null
-
-                  return (
-                   <div key={alarm.id} className="flex items-center justify-between py-3 border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors px-2 rounded-[var(--radius-md)] group">
-                      <div className="flex items-center gap-4">
-                        <div
-                          className="size-2 rounded-full animate-pulse"
-                          style={{ backgroundColor: getCSSVar(sevColorVar[alarm.severity]) }}
-                        />
-                        <div className="flex flex-col">
-                          <span className="text-[12px] font-semibold text-[var(--text-primary)]">{alarm.antennaName}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-mono text-[var(--text-muted)]">{alarm.siteId}</span>
-                            <span className="text-[10px] text-[var(--text-muted)]">•</span>
-                            <span className="text-[10px] font-mono text-[var(--text-muted)]">{alarm.technology}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-6">
-                        {/* Weather Widget */}
-                        {cityWeather && (
-                          <div className="hidden lg:flex items-center gap-2 px-2 py-1 rounded-md bg-[var(--accent-dim)] border border-[var(--border-accent)]">
-                            {(() => {
-                              const Icon = weatherIcons[cityWeather.condition] ?? Cloud
-                              return (
-                                <>
-                                  <Icon className="size-3 text-[var(--accent-bright)]" />
-                                  <span className="text-[9px] font-mono font-medium text-[var(--accent-bright)]">{cityWeather.temp}°C</span>
-                                </>
-                              )
-                            })()}
-                          </div>
-                        )}
-
-                        <div className="hidden md:flex flex-col items-end">
-                          <span className="text-[11px] text-[var(--text-primary)] max-w-[250px] truncate text-right">
-                            {alarm.text}
-                          </span>
-                          <div className="flex items-center gap-1.5 mt-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                            <Clock className="size-3 text-[var(--text-muted)]" />
-                            <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-tighter">
-                              Started {relTime(alarm.alarmTime)}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-end gap-2 mt-1">
-                            <Users className="size-3 text-[var(--alarm-ok)]" />
-                            {assignees.length === 0 ? (
-                              <span className="text-[10px] font-mono text-[var(--text-muted)] italic">
-                                No engineers assigned
-                              </span>
-                            ) : (
-                              <div className="flex items-center -space-x-1.5">
-                                {assignees.slice(0, 4).map((assignee, index) => {
-                                  const label = assignee.displayName ?? assignee.email.split('@')[0]
-                                  const initials = label.slice(0, 2).toUpperCase()
-
-                                  return (
-                                    <div
-                                      key={assignee.uid}
-                                      title={assignee.email}
-                                      className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[9px] font-bold ring-2 ring-[var(--bg-base)]"
-                                      style={{
-                                        background: 'color-mix(in srgb, var(--alarm-ok) 15%, var(--bg-subtle))',
-                                        color: 'var(--alarm-ok)',
-                                        border: '1px solid rgba(52,211,153,0.3)',
-                                        zIndex: assignees.length - index,
-                                      }}
-                                    >
-                                      {initials}
-                                    </div>
-                                  )
-                                })}
-                                {assignees.length > 4 && (
-                                  <div
-                                    className="w-6 h-6 rounded-full flex items-center justify-center font-mono text-[8px] font-bold ring-2 ring-[var(--bg-base)]"
-                                    style={{
-                                      background: 'var(--bg-subtle)',
-                                      color: 'var(--text-muted)',
-                                      border: '1px solid var(--glass-border)',
-                                    }}
-                                  >
-                                    +{assignees.length - 4}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div 
-                          className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest min-w-[80px] text-center"
-                          style={{ 
-                            backgroundColor: `${getCSSVar(sevColorVar[alarm.severity])}22`,
-                            color: getCSSVar(sevColorVar[alarm.severity]),
-                            border: `1px solid ${getCSSVar(sevColorVar[alarm.severity])}44`
-                          }}
-                        >
-                          {alarm.severity}
-                        </div>
-                      </div>
-                   </div>
-                  )
-                })}
-                {activeAlerts.length === 0 && (
-                  <div className="py-12 text-center">
-                    <CheckCircle2 className="size-10 text-[var(--alarm-ok)] mx-auto mb-3 opacity-20" />
-                    <p className="text-[13px] text-[var(--text-muted)] font-mono uppercase tracking-widest">
-                      Network status: All systems nominal
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
       </motion.div>
     </div>
   )
