@@ -141,7 +141,7 @@ export default function Navbar() {
       h-14 flex-shrink-0 grid grid-cols-[auto_1fr_auto] items-center px-6 relative
       border-b border-[var(--glass-border)]
       bg-[var(--glass-bg)] backdrop-blur-xl
-      z-50 transition-colors duration-300
+      z-[10000] transition-colors duration-300
     ">
       {/* Brand */}
       <motion.div
