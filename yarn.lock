@@ -4260,6 +4260,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/nodemailer@npm:^8.0.0":
+  version: 8.0.0
+  resolution: "@types/nodemailer@npm:8.0.0"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/e5031df5d6557f4cdb9a0dbe1a96f3f54dc59c23d47477103fd42b5c9bc925ea1b4e51be560af5620b4d0c66fcfb015ce5ca8f914ed2f3a3086be6149d5932da
+  languageName: node
+  linkType: hard
+
 "@types/react-dom@npm:^19":
   version: 19.2.3
   resolution: "@types/react-dom@npm:19.2.3"
@@ -8787,6 +8796,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"nodemailer@npm:^8.0.10":
+  version: 8.0.10
+  resolution: "nodemailer@npm:8.0.10"
+  checksum: 10c0/b96fd2ea7146de58141219061e094509fd0f19aac5ac86ac35d9ce9c479dbf6c12b143fa7e7050a1be539a3542eb59520c33aabf5a119c8d28fc7d151bde329f
+  languageName: node
+  linkType: hard
+
 "nopt@npm:^9.0.0":
   version: 9.0.0
   resolution: "nopt@npm:9.0.0"
@@ -10450,6 +10466,7 @@ __metadata:
     "@tsparticles/slim": "npm:^3.9.1"
     "@types/leaflet": "npm:^1.9.21"
     "@types/node": "npm:^20"
+    "@types/nodemailer": "npm:^8.0.0"
     "@types/react": "npm:^19"
     "@types/react-dom": "npm:^19"
     class-variance-authority: "npm:^0.7.1"
@@ -10464,6 +10481,7 @@ __metadata:
     lucide-react: "npm:^1.7.0"
     motion: "npm:^12.38.0"
     next: "npm:16.2.1"
+    nodemailer: "npm:^8.0.10"
     radix-ui: "npm:^1.4.3"
     react: "npm:19.2.4"
     react-dom: "npm:19.2.4"
