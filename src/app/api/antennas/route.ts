@@ -7,7 +7,11 @@ import type { Antenna, AlarmSeverity } from '@/types'
 
 export const runtime = 'nodejs'
 
-const CACHE_TTL_S = 60 // one Firestore read per 60 s, shared across all clients
+// Topology positions don't change at runtime — the simulator only mutates the
+// `cells` field, and the map page no longer reads cell state from this route
+// (it comes from meta/liveSnapshot). A long TTL keeps the static read count
+// near zero. Severity changes flow through liveSnapshot in real time.
+const CACHE_TTL_S = 6 * 60 * 60 // 6 hours
 
 // ─── Severity helpers ────────────────────────────────────────────────────────
 

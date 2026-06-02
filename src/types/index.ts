@@ -80,6 +80,15 @@ export interface UserProfile {
   createdAt: string
 }
 
+export interface IncidentActivity {
+  id: string
+  type: 'created' | 'acknowledged' | 'resolved' | 'closed' | 'assigned' | 'unassigned' | 'merged' | 'note'
+  actorUid: string
+  actorName: string
+  message: string
+  timestamp: string
+}
+
 export interface ChatMessage {
   id: string
   text: string
@@ -93,4 +102,44 @@ export interface DashboardSummary {
   longLivedAlarms: Alarm[]
   incidents: Incident[]
   updatedAt: string
+}
+
+export interface LiveSnapshotTotals {
+  /** Counts by status, summed across all incidents ever created. */
+  byStatus: {
+    ASSIGNED: number
+    'IN PROGRESS': number
+    RESOLVED: number
+    CLOSED: number
+  }
+  /** Open-incident counts only (ASSIGNED + IN PROGRESS) bucketed by urgency. */
+  openByUrgency: {
+    '1-Critical': number
+    '2-High': number
+    '3-Medium': number
+    '4-Low': number
+  }
+}
+
+/**
+ * Compact denormalized state mirror written by every code path that mutates
+ * incidents or topology. Clients subscribe to this single doc instead of
+ * polling collection endpoints, which is what keeps daily reads bounded.
+ *
+ * - `antennaSeverity` maps antennaId → worst-severity-among-cells. Drives
+ *   map pin colors and severity filter counts without scanning topology.
+ *   Absence = ok. Owned exclusively by the simulator.
+ * - `openIncidents` is keyed by incidentNumber so multiple writers (the
+ *   simulator and the various API write routes) can mutate distinct entries
+ *   atomically via field-path updates without read-modify-write conflicts.
+ * - `totals` holds writer-maintained counters updated via FieldValue.increment.
+ */
+export interface LiveSnapshot {
+  version: number
+  updatedAt: string
+  antennaSeverity: Record<string, AlarmSeverity>
+  /** Currently-firing alarms, capped by the simulator (~30). */
+  activeAlarms: Alarm[]
+  openIncidents: Record<string, Incident>
+  totals: LiveSnapshotTotals
 }

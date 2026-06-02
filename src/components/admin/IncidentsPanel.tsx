@@ -1,10 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { motion } from 'motion/react'
-import { GitMerge, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
+import { GitMerge, RefreshCw, Search } from 'lucide-react'
+import { IncidentTimeline } from '@/components/incident/IncidentTimeline'
+import { useAuth } from '@/components/AuthProvider'
 import type { Incident, IncidentAssignee } from '@/types'
-import { getAllIncidents, mergeIncidentInto, updateIncidentAssignees } from '@/lib/firestore'
+import { getIncidentHistory, mergeIncidentInto, updateIncidentAssignees } from '@/lib/firestore'
+import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AssignEngineersModal } from './AssignEngineersModal'
 
@@ -32,6 +35,14 @@ const INC_PRIO_LABEL: Record<string, string> = {
 
 function formatPriority(p: string): string {
   return INC_PRIO_LABEL[p] ?? p
+}
+
+const PRIO_ORDER: Record<string, number> = {
+  '1-Critical': 0, '2-High': 1, '3-Medium': 2, '4-Low': 3,
+}
+
+const STATUS_GROUP: Record<string, number> = {
+  'UNASSIGNED': 0, 'ASSIGNED': 0, 'IN PROGRESS': 0, 'RESOLVED': 1, 'CLOSED': 2,
 }
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
@@ -67,36 +78,84 @@ function getDisplayStatus(incident: Incident): DisplayStatus {
     : incident.status
 }
 
-export function IncidentsPanel() {
-  const [incidents, setIncidents]       = useState<Incident[]>([])
-  const [loading, setLoading]           = useState(true)
+export function IncidentsPanel({ highlightIncident }: { highlightIncident?: string }) {
+  const [history, setHistory]           = useState<Incident[]>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
   const [error, setError]               = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [assigningInc, setAssigningInc] = useState<Incident | null>(null)
   const [groupingInc, setGroupingInc]   = useState<Incident | null>(null)
   const [refreshKey, setRefreshKey]     = useState(0)
+  const [expandedInc, setExpandedInc]   = useState<string | null>(highlightIncident ?? null)
+  const [search, setSearch]             = useState(highlightIncident ?? '')
+  const { profile } = useAuth()
 
-  const loadIncidents = useCallback(() => setRefreshKey(k => k + 1), [])
-
+  // When navigated from a notification, switch to ALL filter so the incident is visible
   useEffect(() => {
-    void (async () => {
-      setLoading(true)
+    if (!highlightIncident) return
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) setStatusFilter('ALL')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [highlightIncident])
+
+  // Open incidents come from the live snapshot — push-based, real-time.
+  const { openIncidents, loading: snapshotLoading } = useLiveSnapshot(true)
+
+  // Resolved/closed history pulled on demand from the server-cached history
+  // endpoint. Refresh button rebumps the key to bypass cache when needed.
+  useEffect(() => {
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      setHistoryLoading(true)
       setError(null)
+    })
+    void (async () => {
       try {
-        setIncidents(await getAllIncidents())
+        const { incidents: hist } = await getIncidentHistory({ limit: 50 })
+        if (!cancelled) setHistory(hist)
       } catch {
-        setError('Failed to load incidents. Check Firestore rules.')
+        if (!cancelled) setError('Failed to load incident history.')
       } finally {
-        setLoading(false)
+        if (!cancelled) setHistoryLoading(false)
       }
     })()
+    return () => { cancelled = true }
   }, [refreshKey])
+
+  // Auto-refresh history when an incident leaves the live snapshot (resolved/closed).
+  // The lifecycle route already cleared the server cache at that point, so this
+  // fetch always returns fresh data with the newly resolved/closed incident.
+  const prevOpenNumbersRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const currentNumbers = new Set(openIncidents.map(i => i.incidentNumber))
+    const hadIncidents   = prevOpenNumbersRef.current.size > 0
+    const someDisappeared = hadIncidents &&
+      [...prevOpenNumbersRef.current].some(n => !currentNumbers.has(n))
+
+    if (someDisappeared) {
+      setRefreshKey(k => k + 1)
+    }
+    prevOpenNumbersRef.current = currentNumbers
+  }, [openIncidents])
+
+  const incidents = useMemo<Incident[]>(() => {
+    const merged = new Map<string, Incident>()
+    for (const i of openIncidents) merged.set(i.incidentNumber, i)
+    for (const i of history)       merged.set(i.incidentNumber, i)
+    return Array.from(merged.values())
+  }, [openIncidents, history])
+
+  const loading = snapshotLoading || historyLoading
+  const loadIncidents = useCallback(() => setRefreshKey(k => k + 1), [])
 
   async function handleSave(incidentNumber: string, assignees: IncidentAssignee[]) {
     await updateIncidentAssignees(incidentNumber, assignees)
-    setIncidents(prev =>
-      prev.map(i => i.incidentNumber === incidentNumber ? { ...i, assignees } : i)
-    )
+    // Snapshot listener will reflect the assignee update on its own.
   }
 
   async function handleGroup(source: Incident, targetIncidentNumber: string) {
@@ -104,18 +163,32 @@ export function IncidentsPanel() {
     if (!target) return
     await mergeIncidentInto(target, source)
     setGroupingInc(null)
-    setIncidents(await getAllIncidents())
+    loadIncidents()
   }
 
-  const filtered = incidents.filter(i =>
-    statusFilter === 'ALL' ? true : getDisplayStatus(i) === statusFilter
-  )
+  const searchTerm = search.trim().toLowerCase()
+  const filtered = incidents
+    .filter(i => {
+      if (statusFilter !== 'ALL' && getDisplayStatus(i) !== statusFilter) return false
+      if (searchTerm && !i.incidentNumber.toLowerCase().includes(searchTerm)) return false
+      return true
+    })
+    .sort((a, b) => {
+      const ag = STATUS_GROUP[getDisplayStatus(a)] ?? 0
+      const bg = STATUS_GROUP[getDisplayStatus(b)] ?? 0
+      if (ag !== bg) return ag - bg
+      const ap = PRIO_ORDER[a.priority] ?? 99
+      const bp = PRIO_ORDER[b.priority] ?? 99
+      if (ap !== bp) return ap - bp
+      return new Date(b.submitDate).getTime() - new Date(a.submitDate).getTime()
+    })
 
   const stats = {
     total:      incidents.length,
     open:       incidents.filter(i => i.status === 'ASSIGNED' || i.status === 'IN PROGRESS').length,
     inProgress: incidents.filter(i => i.status === 'IN PROGRESS').length,
-    resolved:   incidents.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length,
+    resolved:   incidents.filter(i => i.status === 'RESOLVED').length,
+    closed:     incidents.filter(i => i.status === 'CLOSED').length,
   }
 
   return (
@@ -123,12 +196,13 @@ export function IncidentsPanel() {
       <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           {[
             { label: 'Total',       value: stats.total,      color: 'var(--text-primary)' },
             { label: 'Open',        value: stats.open,       color: 'var(--alarm-major)' },
             { label: 'In Progress', value: stats.inProgress, color: 'var(--accent-bright)' },
             { label: 'Resolved',    value: stats.resolved,   color: 'var(--alarm-ok)' },
+            { label: 'Closed',      value: stats.closed,     color: 'var(--text-muted)' },
           ].map(s => (
             <motion.div key={s.label} variants={itemVariants}>
               <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
@@ -178,6 +252,21 @@ export function IncidentsPanel() {
                     Refresh
                   </motion.button>
                 </div>
+              </div>
+
+              {/* Search */}
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-[var(--text-muted)] pointer-events-none" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search by incident number…"
+                  className="w-full pl-8 pr-3 py-2 rounded-[var(--radius-md)] text-[12px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors duration-150"
+                  style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
+                  onFocus={e => (e.target.style.borderColor = 'var(--border-accent)')}
+                  onBlur={e => (e.target.style.borderColor = 'var(--glass-border)')}
+                />
               </div>
 
               {/* Filters */}
@@ -235,12 +324,13 @@ export function IncidentsPanel() {
                     const canGroup      = inc.status === 'ASSIGNED' || inc.status === 'IN PROGRESS'
 
                     return (
+                      <div key={inc.incidentNumber}>
                       <motion.div
-                        key={inc.incidentNumber}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: idx * 0.015 }}
-                        className="group relative flex items-center gap-4 px-5 py-4 border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors duration-150"
+                        onClick={() => setExpandedInc(prev => prev === inc.incidentNumber ? null : inc.incidentNumber)}
+                        className="group relative flex items-center gap-4 px-5 py-4 border-b border-[var(--glass-border)] last:border-0 hover:bg-[var(--glass-hover)] transition-colors duration-150 cursor-pointer select-none"
                         style={{ borderLeft: `2px solid ${statusColor}` }}
                       >
                         {/* Left: meta */}
@@ -340,7 +430,7 @@ export function IncidentsPanel() {
                           {canGroup && (
                             <motion.button
                               whileTap={{ scale: 0.95 }}
-                              onClick={() => setGroupingInc(inc)}
+                              onClick={e => { e.stopPropagation(); setGroupingInc(inc) }}
                               className="
                                 flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)]
                                 text-[10px] font-medium uppercase tracking-widest cursor-pointer
@@ -358,7 +448,7 @@ export function IncidentsPanel() {
                           {/* Assign button */}
                           <motion.button
                             whileTap={{ scale: 0.95 }}
-                            onClick={() => setAssigningInc(inc)}
+                            onClick={e => { e.stopPropagation(); setAssigningInc(inc) }}
                             className="
                               flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)]
                               text-[10px] font-medium uppercase tracking-widest cursor-pointer
@@ -376,6 +466,30 @@ export function IncidentsPanel() {
                           </motion.button>
                         </div>
                       </motion.div>
+
+                      {/* Expandable activity timeline */}
+                      <AnimatePresence initial={false}>
+                        {expandedInc === inc.incidentNumber && (
+                          <motion.div
+                            key="timeline"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.25, ease: EASE }}
+                            className="overflow-hidden border-b border-[var(--glass-border)] bg-[var(--glass-hover)]"
+                          >
+                            <div className="px-5 py-4">
+                              <IncidentTimeline
+                                incidentNumber={inc.incidentNumber}
+                                currentUid={profile?.uid}
+                                currentName={profile?.displayName ?? profile?.email?.split('@')[0]}
+                                allowNotes={false}
+                              />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                      </div>
                     )
                   })}
                 </div>

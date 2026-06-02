@@ -15,19 +15,23 @@ export function usePolling<T>(
   const fetchData = useCallback(async () => {
     try {
       const result = await apiFetch<T>(url)
-      setData(result) // eslint-disable-line react-hooks/set-state-in-effect
+      setData(result)
     } catch {
       // silently retry on next interval
     } finally {
-      setLoading(false) // eslint-disable-line react-hooks/set-state-in-effect
+      setLoading(false)
     }
   }, [url])
 
   useEffect(() => {
     if (!enabled) return
-    void fetchData() // eslint-disable-line react-hooks/set-state-in-effect
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) void fetchData()
+    })
     timerRef.current = setInterval(() => void fetchData(), intervalMs)
     return () => {
+      cancelled = true
       if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [fetchData, intervalMs, enabled])

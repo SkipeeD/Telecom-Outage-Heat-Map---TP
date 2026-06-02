@@ -1,16 +1,15 @@
 import Link from "next/link"
 import { SignalHigh } from "lucide-react"
-import { SignupForm } from "@/components/signup-form"
+import { ForgotPasswordForm } from "@/components/forgot-password-form"
 import { GlobeAuthBackground } from "@/components/globe-auth-background"
 import { SparklesCore } from "@/components/ui/sparkles"
 
-export default function RegisterPage() {
+export default function ForgotPasswordPage() {
   return (
     <div className="relative grid min-h-svh lg:grid-cols-2 bg-[var(--bg-base)] transition-colors duration-300">
-      {/* Sparkles across both panels */}
       <div className="absolute inset-0 pointer-events-none z-0">
         <SparklesCore
-          id="register-sparkles"
+          id="forgot-sparkles"
           background="transparent"
           minSize={0.4}
           maxSize={1.2}
@@ -31,7 +30,7 @@ export default function RegisterPage() {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
-            <SignupForm />
+            <ForgotPasswordForm />
           </div>
         </div>
       </div>

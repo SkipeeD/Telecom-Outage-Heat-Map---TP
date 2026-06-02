@@ -6,7 +6,7 @@ config({ path: resolve(process.cwd(), '.env.local') })
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import type { DocumentData, WriteBatch } from 'firebase-admin/firestore'
-import type { Technology, AlarmSeverity, Alarm, Cell } from '../src/types'
+import type { Technology, AlarmSeverity, Alarm, Cell, Incident, LiveSnapshot, LiveSnapshotTotals } from '../src/types'
 
 if (getApps().length === 0) {
   const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
@@ -17,6 +17,7 @@ if (getApps().length === 0) {
 
 const db = getFirestore()
 const SIMULATION_STATE_REF = db.collection('config').doc('simulationState')
+const LIVE_SNAPSHOT_REF    = db.collection('meta').doc('liveSnapshot')
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -103,7 +104,7 @@ function pickAlarm(severity: AlarmSeverity): AlarmTemplate {
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
-function toUrgency(severity: AlarmSeverity): string {
+function toUrgency(severity: AlarmSeverity): Incident['urgency'] {
   switch (severity) {
     case 'critical': return '1-Critical'
     case 'major':    return '2-High'
@@ -142,6 +143,25 @@ const activeAlarmCache = new Map<string, Alarm>()
 
 let incidentCounter = 1
 let stateDirty = false
+
+// ── Live snapshot state ────────────────────────────────────────────────────
+// Mirror of meta/liveSnapshot — the single doc clients subscribe to via
+// onSnapshot. Maintained entirely in memory by writers so we never query
+// incidents or topology to render it.
+
+const SEV_RANK: Record<AlarmSeverity, number> = {
+  ok: 0, warning: 1, minor: 2, major: 3, critical: 4,
+}
+
+const openIncidentsByNumber = new Map<string, Incident>()
+
+const liveTotals: LiveSnapshotTotals = {
+  byStatus:      { ASSIGNED: 0, 'IN PROGRESS': 0, RESOLVED: 0, CLOSED: 0 },
+  openByUrgency: { '1-Critical': 0, '2-High': 0, '3-Medium': 0, '4-Low': 0 },
+}
+
+let liveSnapshotVersion = 0
+let liveSnapshotDirty   = false
 
 interface SimulationState {
   version: 1
@@ -239,23 +259,37 @@ async function prepareIncidentForAlarm(
         ? existing.data.urgency
         : '4-Low'
     const shouldEscalate = priorityRank(urgency) < priorityRank(existingPriority)
+    const escalationFields = shouldEscalate ? {
+      urgency,
+      priority: urgency,
+      impact: alarm.severity === 'critical' ? '2-Significant/Large' : alarm.severity === 'minor' ? '3-Moderate/Limited' : '4-Minor/Localized',
+    } : {}
     batch.update(db.collection('incidents').doc(existing.id), {
       siteIds:      FieldValue.arrayUnion(...scope.siteIds),
       antennaIds:   FieldValue.arrayUnion(...scope.antennaIds),
       alarmIds:     FieldValue.arrayUnion(alarmId),
       technologies: FieldValue.arrayUnion(alarm.technology),
-      ...(shouldEscalate ? {
-        urgency,
-        priority: urgency,
-        impact: alarm.severity === 'critical' ? '2-Significant/Large' : alarm.severity === 'minor' ? '3-Moderate/Limited' : '4-Minor/Localized',
-      } : {}),
+      ...escalationFields,
     })
     writesThisRun++
+
+    // Mirror the update in the live snapshot state.
+    const existingIncident = openIncidentsByNumber.get(existing.id) ?? (existing.data as Incident)
+    const nextIncident: Incident = {
+      ...existingIncident,
+      siteIds:      Array.from(new Set([...(existingIncident.siteIds ?? []), ...scope.siteIds])),
+      antennaIds:   Array.from(new Set([...(existingIncident.antennaIds ?? []), ...scope.antennaIds])),
+      alarmIds:     Array.from(new Set([...(existingIncident.alarmIds ?? []), alarmId])),
+      technologies: Array.from(new Set([...(existingIncident.technologies ?? []), alarm.technology])),
+      ...(shouldEscalate ? { urgency, priority: urgency, impact: escalationFields.impact ?? existingIncident.impact } : {}),
+    }
+    trackIncidentUpdated(existingIncident, nextIncident)
+
     return existing.id
   }
 
   const incidentId = nextIncidentId()
-  batch.set(db.collection('incidents').doc(incidentId), {
+  const newIncident: Incident = {
     incidentNumber: incidentId,
     submitDate,
     alarmId,
@@ -267,15 +301,18 @@ async function prepareIncidentForAlarm(
     alarmIds:     [alarmId],
     technologies: [alarm.technology],
     status,
-    urgency:      toUrgency(alarm.severity),
+    urgency:      toUrgency(alarm.severity) as Incident['urgency'],
     impact:       alarm.severity === 'critical' ? '2-Significant/Large' : alarm.severity === 'minor' ? '3-Moderate/Limited' : '4-Minor/Localized',
-    priority:     toUrgency(alarm.severity),
+    priority:     toUrgency(alarm.severity) as Incident['priority'],
     closedDate:   null,
     assignee:     '',
     assignees:    [],
     resolvedDate: null,
-  })
+  }
+  batch.set(db.collection('incidents').doc(incidentId), newIncident)
   writesThisRun++
+
+  trackIncidentCreated(newIncident)
   return incidentId
 }
 
@@ -325,38 +362,206 @@ async function initCaches() {
   if (await loadSimulationState()) {
     console.log(`[simulate] Simulation state loaded — ${activeAlarmCache.size} active alarms`)
     console.log(`[simulate] Incident counter: INC${String(incidentCounter).padStart(7, '0')}\n`)
-    return
+  } else {
+    console.log('[simulate] Simulation state missing — bootstrapping from Firestore queries')
+
+    // Bootstrap only: active alarms (limit 30). The state doc written below is
+    // used by later runs, so this query should not recur unless config is reset.
+    const alarmSnap = await db.collection('alarms')
+      .where('resolved', '==', false)
+      .limit(30)
+      .get()
+    for (const doc of alarmSnap.docs) {
+      const alarm = { id: doc.id, ...doc.data() } as Alarm
+      activeAlarmCache.set(doc.id, alarm)
+    }
+    console.log(`[simulate] Active alarm sample loaded — ${activeAlarmCache.size} alarms (sample of 30 max)`)
+
+    // Bootstrap only: incident counter (1 doc)
+    const incSnap = await db.collection('incidents')
+      .orderBy('incidentNumber', 'desc')
+      .limit(1)
+      .get()
+    if (!incSnap.empty) {
+      const lastId = incSnap.docs[0].data().incidentNumber as string
+      incidentCounter = parseInt(lastId.replace('INC', ''), 10) + 1
+    }
+    await saveSimulationState()
+    console.log(`[simulate] Incident counter: INC${String(incidentCounter).padStart(7, '0')}\n`)
   }
 
-  console.log('[simulate] Simulation state missing — bootstrapping from Firestore queries')
-
-  // Bootstrap only: active alarms (limit 30). The state doc written below is
-  // used by later runs, so this query should not recur unless config is reset.
-  const alarmSnap = await db.collection('alarms')
-    .where('resolved', '==', false)
-    .limit(30)
-    .get()
-  for (const doc of alarmSnap.docs) {
-    const alarm = { id: doc.id, ...doc.data() } as Alarm
-    activeAlarmCache.set(doc.id, alarm)
-  }
-  console.log(`[simulate] Active alarm sample loaded — ${activeAlarmCache.size} alarms (sample of 30 max)`)
-
-  // Bootstrap only: incident counter (1 doc)
-  const incSnap = await db.collection('incidents')
-    .orderBy('incidentNumber', 'desc')
-    .limit(1)
-    .get()
-  if (!incSnap.empty) {
-    const lastId = incSnap.docs[0].data().incidentNumber as string
-    incidentCounter = parseInt(lastId.replace('INC', ''), 10) + 1
-  }
-  await saveSimulationState()
-  console.log(`[simulate] Incident counter: INC${String(incidentCounter).padStart(7, '0')}\n`)
+  // Live snapshot bootstrap is independent of simulator state — restored from
+  // its own doc, or computed fresh from count() aggregations on first ever run.
+  await bootstrapLiveSnapshot()
 }
 
 function nextIncidentId(): string {
   return `INC${String(incidentCounter++).padStart(7, '0')}`
+}
+
+// ---------------------------------------------------------------------------
+// Live snapshot bookkeeping
+// ---------------------------------------------------------------------------
+//
+// Two pieces of state are folded into meta/liveSnapshot:
+//   - antennaSeverity: owned by the simulator (derived from activeAlarmCache).
+//     Recomputed in full each save — no other writer touches it.
+//   - openIncidents + totals: shared with API write routes. Mutated via
+//     field-path updates (FieldValue.increment / FieldValue.delete) so multiple
+//     writers can run concurrently without read-modify-write conflicts.
+//
+// To keep writes atomic, the simulator accumulates a per-tick "patch" object
+// (Firestore update payload) instead of building the whole doc and overwriting.
+
+let pendingPatch: Record<string, unknown> = {}
+
+function isOpenStatus(status: Incident['status']): status is 'ASSIGNED' | 'IN PROGRESS' {
+  return status === 'ASSIGNED' || status === 'IN PROGRESS'
+}
+
+function computeAntennaSeverity(): Record<string, AlarmSeverity> {
+  // Worst severity per antenna from the in-memory active alarm cache.
+  // Antennas with no active alarm are omitted (client treats absence as 'ok').
+  const out: Record<string, AlarmSeverity> = {}
+  for (const alarm of activeAlarmCache.values()) {
+    const current = out[alarm.antennaId]
+    if (!current || SEV_RANK[alarm.severity] > SEV_RANK[current]) {
+      out[alarm.antennaId] = alarm.severity
+    }
+  }
+  return out
+}
+
+function bumpTotalsForStatus(status: Incident['status'], delta: 1 | -1) {
+  const key = `totals.byStatus.${status}`
+  pendingPatch[key] = FieldValue.increment(delta)
+  liveTotals.byStatus[status] = Math.max(0, liveTotals.byStatus[status] + delta)
+}
+
+function bumpOpenByUrgency(urgency: Incident['urgency'], delta: 1 | -1) {
+  const key = `totals.openByUrgency.${urgency}`
+  pendingPatch[key] = FieldValue.increment(delta)
+  liveTotals.openByUrgency[urgency] = Math.max(0, liveTotals.openByUrgency[urgency] + delta)
+}
+
+function setOpenIncident(incident: Incident) {
+  pendingPatch[`openIncidents.${incident.incidentNumber}`] = incident
+  openIncidentsByNumber.set(incident.incidentNumber, incident)
+}
+
+function deleteOpenIncident(incidentNumber: string) {
+  pendingPatch[`openIncidents.${incidentNumber}`] = FieldValue.delete()
+  openIncidentsByNumber.delete(incidentNumber)
+}
+
+function trackIncidentCreated(incident: Incident) {
+  if (isOpenStatus(incident.status)) {
+    setOpenIncident(incident)
+    bumpOpenByUrgency(incident.urgency, 1)
+  }
+  bumpTotalsForStatus(incident.status, 1)
+  liveSnapshotDirty = true
+}
+
+function trackIncidentUpdated(prev: Incident, next: Incident) {
+  if (prev.status !== next.status) {
+    bumpTotalsForStatus(prev.status, -1)
+    bumpTotalsForStatus(next.status, 1)
+    if (isOpenStatus(prev.status) && !isOpenStatus(next.status)) {
+      bumpOpenByUrgency(prev.urgency, -1)
+    } else if (!isOpenStatus(prev.status) && isOpenStatus(next.status)) {
+      bumpOpenByUrgency(next.urgency, 1)
+    }
+  } else if (isOpenStatus(prev.status) && prev.urgency !== next.urgency) {
+    bumpOpenByUrgency(prev.urgency, -1)
+    bumpOpenByUrgency(next.urgency, 1)
+  }
+
+  if (isOpenStatus(next.status)) {
+    setOpenIncident(next)
+  } else {
+    deleteOpenIncident(next.incidentNumber)
+  }
+  liveSnapshotDirty = true
+}
+
+async function saveLiveSnapshot() {
+  // antennaSeverity + activeAlarms are fully owned by the simulator — replaced
+  // in full each save. openIncidents + totals come from accumulated pendingPatch.
+  // update() must be used (not set+merge) so that dot-notation keys like
+  // 'openIncidents.INC123' are treated as nested field paths, not literal keys.
+  const patch: Record<string, unknown> = {
+    ...pendingPatch,
+    antennaSeverity: computeAntennaSeverity(),
+    activeAlarms:    Array.from(activeAlarmCache.values()),
+    version:         FieldValue.increment(1),
+    updatedAt:       new Date().toISOString(),
+  }
+  await LIVE_SNAPSHOT_REF.update(patch)
+  pendingPatch = {}
+  liveSnapshotDirty = false
+}
+
+async function bootstrapLiveSnapshot() {
+  // Try restoring from the previously-written snapshot first (zero cost beyond
+  // the 1 doc read).
+  const existing = await LIVE_SNAPSHOT_REF.get()
+  if (existing.exists) {
+    const data = existing.data() as Partial<LiveSnapshot>
+    liveSnapshotVersion = typeof data.version === 'number' ? data.version : 0
+    if (data.totals?.byStatus) {
+      liveTotals.byStatus      = { ...liveTotals.byStatus,      ...data.totals.byStatus }
+    }
+    if (data.totals?.openByUrgency) {
+      liveTotals.openByUrgency = { ...liveTotals.openByUrgency, ...data.totals.openByUrgency }
+    }
+    openIncidentsByNumber.clear()
+    const openMap = data.openIncidents ?? {}
+    for (const inc of Object.values(openMap)) {
+      openIncidentsByNumber.set(inc.incidentNumber, inc)
+    }
+    console.log(`[simulate] Live snapshot restored — v${liveSnapshotVersion}, ${openIncidentsByNumber.size} open incidents`)
+    return
+  }
+
+  console.log('[simulate] Live snapshot missing — bootstrapping from Firestore queries')
+
+  // First-ever run path: 4 count() aggregations + 1 page of open incidents.
+  // After this the snapshot is self-sustaining and these queries never recur.
+  const statuses: Array<Incident['status']> = ['ASSIGNED', 'IN PROGRESS', 'RESOLVED', 'CLOSED']
+  await Promise.all(statuses.map(async status => {
+    const agg = await db.collection('incidents').where('status', '==', status).count().get()
+    liveTotals.byStatus[status] = agg.data().count
+  }))
+
+  const openIncidentsMap: Record<string, Incident> = {}
+  const openSnap = await db.collection('incidents')
+    .where('status', 'in', ['ASSIGNED', 'IN PROGRESS'])
+    .orderBy('submitDate', 'desc')
+    .limit(100)
+    .get()
+  for (const doc of openSnap.docs) {
+    const inc = doc.data() as Incident
+    openIncidentsByNumber.set(inc.incidentNumber, inc)
+    openIncidentsMap[inc.incidentNumber] = inc
+    liveTotals.openByUrgency[inc.urgency] = (liveTotals.openByUrgency[inc.urgency] ?? 0) + 1
+  }
+
+  // First write is a full set — no merge needed since the doc didn't exist.
+  await LIVE_SNAPSHOT_REF.set({
+    version:         1,
+    updatedAt:       new Date().toISOString(),
+    antennaSeverity: computeAntennaSeverity(),
+    activeAlarms:    Array.from(activeAlarmCache.values()),
+    openIncidents:   openIncidentsMap,
+    totals: {
+      byStatus:      { ...liveTotals.byStatus },
+      openByUrgency: { ...liveTotals.openByUrgency },
+    },
+  } satisfies LiveSnapshot)
+  liveSnapshotDirty = false
+  liveSnapshotVersion = 1
+  console.log(`[simulate] Live snapshot bootstrapped — ${openIncidentsByNumber.size} open incidents`)
 }
 
 // ---------------------------------------------------------------------------
@@ -479,6 +684,7 @@ async function triggerAlarm() {
   await batch.commit()
   activeAlarmCache.set(alarmId, { id: alarmId, ...alarmDoc })
   stateDirty = true
+  liveSnapshotDirty = true       // antennaSeverity changed
 
   console.log(`[simulate] TRIGGER  ${severity.padEnd(8)} — ${pick.siteId} / ${pick.technology} — "${template.text}"`)
 }
@@ -524,23 +730,10 @@ async function resolveAlarm() {
   batch.update(db.collection('topology').doc(alarm.antennaId), { cells: updatedCells })
   writesThisRun += 2
 
-  const incidentStillHasActiveAlarms = alarm.incidentId
-    ? Array.from(activeAlarmCache.values()).some(a => a.id !== alarmId && a.incidentId === alarm.incidentId)
-    : false
-
-  // Resolve the grouped incident only after its last active linked alarm clears.
-  if (alarm.incidentId && !incidentStillHasActiveAlarms) {
-    batch.update(db.collection('incidents').doc(alarm.incidentId), {
-      status:       'RESOLVED',
-      resolvedDate: cancelTime,
-      closedDate:   cancelTime,
-    })
-    writesThisRun++
-  }
-
   await batch.commit()
   activeAlarmCache.delete(alarmId)
   stateDirty = true
+  liveSnapshotDirty = true       // antennaSeverity changed
 
   const resolvedInMin = Math.round(durationMs / 60_000)
   console.log(`[simulate] RESOLVE  ${alarm.severity.padEnd(8)} — ${alarm.siteId} / ${alarm.technology} — "${alarm.text}" (${resolvedInMin}m)`)
@@ -570,6 +763,9 @@ async function tick() {
 
     if (stateDirty) {
       await saveSimulationState()
+    }
+    if (liveSnapshotDirty) {
+      await saveLiveSnapshot()
     }
   } catch (err) {
     console.error('[simulate] Tick error:', err)
@@ -614,6 +810,9 @@ async function run() {
     }
     if (stateDirty) {
       await saveSimulationState()
+    }
+    if (liveSnapshotDirty) {
+      await saveLiveSnapshot()
     }
     console.log(`[simulate] Drain complete — ${activeAlarmCache.size} active alarms remaining`)
   } else if (ONCE) {

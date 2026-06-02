@@ -1,4 +1,7 @@
 import { getAdminAuth, getAdminDb } from '@/lib/firebase-admin'
+import { snapshotOnIncidentUpdated } from '@/lib/live-snapshot'
+import { logIncidentActivity, actorName } from '@/lib/incident-activity'
+import { clearHistoryCache } from '@/app/api/incidents/history/route'
 import type { Incident, UserProfile } from '@/types'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -46,17 +49,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    let next: Incident
     if (action === 'resolve') {
       if (incident.status !== 'IN PROGRESS') {
         return NextResponse.json({ error: 'Incident must be IN PROGRESS to resolve' }, { status: 409 })
       }
-      await ref.update({ status: 'RESOLVED', resolvedDate: new Date().toISOString(), closedDate: null })
+      const resolvedDate = new Date().toISOString()
+      await ref.update({ status: 'RESOLVED', resolvedDate, closedDate: null })
+      next = { ...incident, status: 'RESOLVED', resolvedDate, closedDate: null }
     } else {
       if (incident.status !== 'RESOLVED') {
         return NextResponse.json({ error: 'Incident must be RESOLVED to close' }, { status: 409 })
       }
-      await ref.update({ status: 'CLOSED', closedDate: new Date().toISOString() })
+      const closedDate = new Date().toISOString()
+      await ref.update({ status: 'CLOSED', closedDate })
+      next = { ...incident, status: 'CLOSED', closedDate }
     }
+
+    await snapshotOnIncidentUpdated(incident, next, db)
+    clearHistoryCache()
+    void logIncidentActivity(db, incidentNumber, {
+      type:      action === 'resolve' ? 'resolved' : 'closed',
+      actorUid:  caller.uid,
+      actorName: actorName(caller),
+      message:   action === 'resolve' ? 'Incident marked as resolved' : 'Incident closed',
+      timestamp: action === 'resolve' ? next.resolvedDate! : next.closedDate!,
+    })
 
     return NextResponse.json({ success: true })
   } catch {

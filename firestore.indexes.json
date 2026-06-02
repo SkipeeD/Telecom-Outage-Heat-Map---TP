@@ -31,6 +31,14 @@
         { "fieldPath": "resolved",   "order": "ASCENDING" },
         { "fieldPath": "cancelTime", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "incidents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "submitDate", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -1,4 +1,6 @@
 import { getAdminAuth, getAdminDb } from '@/lib/firebase-admin'
+import { snapshotOnIncidentUpdated } from '@/lib/live-snapshot'
+import { logIncidentActivity, actorName } from '@/lib/incident-activity'
 import type { Incident, UserProfile } from '@/types'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -33,9 +35,11 @@ export async function POST(req: NextRequest) {
     }
 
     let updated: string[] = []
+    const transitioned: Incident[] = []
 
     await db.runTransaction(async tx => {
       const nextUpdated: string[] = []
+      transitioned.length = 0
 
       for (const incidentNumber of incidentNumbers) {
         const ref = db.collection('incidents').doc(incidentNumber)
@@ -55,11 +59,29 @@ export async function POST(req: NextRequest) {
         if (incident.status === 'ASSIGNED') {
           tx.update(ref, { status: 'IN PROGRESS' })
           nextUpdated.push(incidentNumber)
+          transitioned.push(incident)
         }
       }
 
       updated = nextUpdated
     })
+
+    // After commit succeeds, mirror status transitions in the snapshot.
+    // This intentionally runs outside the transaction since meta/liveSnapshot
+    // uses atomic field updates rather than transactional read-modify-write.
+    const now = new Date().toISOString()
+    await Promise.all(transitioned.map(prev =>
+      snapshotOnIncidentUpdated(prev, { ...prev, status: 'IN PROGRESS' }, db)
+    ))
+    for (const prev of transitioned) {
+      void logIncidentActivity(db, prev.incidentNumber, {
+        type:      'acknowledged',
+        actorUid:  caller.uid,
+        actorName: actorName(caller),
+        message:   'Incident acknowledged — work started',
+        timestamp: now,
+      })
+    }
 
     return NextResponse.json({ updated })
   } catch (error) {

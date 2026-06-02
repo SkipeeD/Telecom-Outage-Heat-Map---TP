@@ -24,8 +24,14 @@ export function getWorstCell(antenna: Antenna): { technology: Technology; status
   )
 }
 
+function resolveAccentGlow(): string {
+  if (typeof window === 'undefined') return 'rgba(124,111,247,0.6)'
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+  return accent ? `${accent}99` : 'rgba(124,111,247,0.6)'
+}
+
 export function getMarkerColor(tech: Technology, severity: AlarmSeverity) {
-  if (typeof window === 'undefined') return { fill: '#6c5ff5', stroke: '#059669' }
+  if (typeof window === 'undefined') return { fill: 'var(--tech-5g)', stroke: 'var(--alarm-ok)' }
 
   const root = document.documentElement
   const style = getComputedStyle(root)
@@ -91,7 +97,7 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
         path.style.transition = 'transform 220ms cubic-bezier(0.34,1.56,0.64,1), filter 220ms ease'
         if (id === selectedIdRef.current) {
           path.style.transform = 'scale(1.72)'
-          path.style.filter    = 'drop-shadow(0 0 5px rgba(124,111,247,0.6))'
+          path.style.filter    = `drop-shadow(0 0 5px ${resolveAccentGlow()})`
         } else if (id === hoveredIdRef.current) {
           path.style.transform = 'scale(1.45)'
           path.style.filter    = ''
@@ -124,7 +130,7 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
     markerPaths.current.forEach((path, id) => {
       if (id === selectedId) {
         path.style.transform = 'scale(1.72)'
-        path.style.filter    = 'drop-shadow(0 0 5px rgba(124,111,247,0.6))'
+        path.style.filter    = `drop-shadow(0 0 5px ${resolveAccentGlow()})`
       } else if (id === hoveredId) {
         path.style.transform = 'scale(1.45)'
         path.style.filter    = ''
@@ -216,9 +222,9 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
                       <span
                         className="text-[10px] font-mono px-2 py-0.5 rounded-full border"
                         style={{
-                          backgroundColor: '#f9731622',
-                          borderColor: '#f9731666',
-                          color: '#f97316',
+                          backgroundColor: 'color-mix(in srgb, var(--tech-b2b) 13%, transparent)',
+                          borderColor: 'color-mix(in srgb, var(--tech-b2b) 40%, transparent)',
+                          color: 'var(--tech-b2b)',
                         }}
                       >
                         ⚠ weather
