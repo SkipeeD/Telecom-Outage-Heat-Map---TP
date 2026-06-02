@@ -105,7 +105,7 @@ export default function MapClient({ antennas, selectedId, focusAntennaId, active
         zoom={7}
         zoomControl={false}
         attributionControl={false}
-        style={{ width: '100%', height: '100%', background: theme === 'dark' ? '#1a1a2e' : '#e8e8f2' }}
+        style={{ width: '100%', height: '100%', background: 'var(--bg-subtle)' }}
       >
         <TileLayer
           key={theme}

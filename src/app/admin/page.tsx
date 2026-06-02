@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'motion/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
 import { getAllUsers, updateUserRole } from '@/lib/firestore'
 import { canManageUsers } from '@/lib/roles'
@@ -35,8 +35,13 @@ const ROLE_CONFIG: Record<UserProfile['role'], { label: string; bg: string; bord
 export default function AdminPage() {
   const { profile, loading: authLoading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
-  const [activeTab, setActiveTab] = useState<AdminTab>('users')
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+    const tab = searchParams.get('tab')
+    return tab === 'incidents' ? 'incidents' : 'users'
+  })
+  const incidentFromUrl = searchParams.get('incident')
   const [users, setUsers] = useState<UserProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
@@ -287,7 +292,7 @@ export default function AdminPage() {
         )}
 
         {/* ── Incidents tab ───────────────────────────────────── */}
-        {activeTab === 'incidents' && <IncidentsPanel />}
+        {activeTab === 'incidents' && <IncidentsPanel highlightIncident={incidentFromUrl ?? undefined} />}
 
       </motion.div>
     </div>

@@ -35,11 +35,47 @@ export async function getAntennas(severity?: string): Promise<AntennaData> {
   return apiFetch<AntennaData>(`/api/antennas${qs}`)
 }
 
+/**
+ * Fetch a single antenna's full cell breakdown — used by the popup/details
+ * panel after a pin click. Server-cached (30s) so repeated clicks share a
+ * single Firestore doc read.
+ */
+export async function getAntenna(id: string): Promise<Antenna> {
+  const data = await apiFetch<{ antenna: Antenna }>(`/api/antennas/${encodeURIComponent(id)}`)
+  return data.antenna
+}
+
 // ─── Incidents ───────────────────────────────────────────────────────────────
 
 export async function getAllIncidents(): Promise<Incident[]> {
   const data = await apiFetch<{ incidents: Incident[] }>('/api/incidents')
   return data.incidents
+}
+
+export interface IncidentHistoryParams {
+  cursor?: string
+  limit?: number
+  assigneeUid?: string
+  sinceIso?: string
+}
+
+export interface IncidentHistoryPage {
+  incidents: Incident[]
+  nextCursor: string | null
+}
+
+/**
+ * Cursor-paginated resolved/closed incident history. Server-cached for 15 min
+ * since resolved incidents are immutable.
+ */
+export async function getIncidentHistory(params: IncidentHistoryParams = {}): Promise<IncidentHistoryPage> {
+  const qs = new URLSearchParams()
+  if (params.cursor)      qs.set('cursor', params.cursor)
+  if (params.limit)       qs.set('limit', String(params.limit))
+  if (params.assigneeUid) qs.set('assigneeUid', params.assigneeUid)
+  if (params.sinceIso)    qs.set('sinceIso', params.sinceIso)
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  return apiFetch<IncidentHistoryPage>(`/api/incidents/history${suffix}`)
 }
 
 export async function getMyIncidents(uid: string): Promise<Incident[]> {

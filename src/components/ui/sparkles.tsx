@@ -31,6 +31,10 @@ export const SparklesCore = (props: ParticlesProps) => {
     particleDensity,
   } = props;
   const [init, setInit] = useState(false);
+  const [accentColor, setAccentColor] = useState<string>(() => {
+    if (typeof window === 'undefined') return '#7c6ff7'
+    return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#7c6ff7'
+  })
 
   useEffect(() => {
     initParticlesEngine(async (engine) => {
@@ -39,6 +43,20 @@ export const SparklesCore = (props: ParticlesProps) => {
       setInit(true);
     });
   }, []);
+
+  // Re-resolve accent color when the .dark class toggles (theme change)
+  useEffect(() => {
+    if (particleColor) return
+    const update = () => {
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+      setAccentColor(accent || '#7c6ff7')
+    }
+    const observer = new MutationObserver(update)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [particleColor]);
+
+  const resolvedColor = particleColor ?? accentColor
 
   const controls = useAnimation();
 
@@ -94,7 +112,7 @@ export const SparklesCore = (props: ParticlesProps) => {
                 overlap: { enable: true, retries: 0 },
               },
               color: {
-                value: particleColor || "#7c6ff7",
+                value: resolvedColor,
                 animation: {
                   h: { count: 0, enable: false, speed: 1, decay: 0, delay: 0, sync: true, offset: 0 },
                   s: { count: 0, enable: false, speed: 1, decay: 0, delay: 0, sync: true, offset: 0 },

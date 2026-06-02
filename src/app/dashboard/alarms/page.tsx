@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { incidentMatchesAlarm, getAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
-import type { Antenna, AlarmSeverity, Alarm, DashboardSummary, Incident } from '@/types'
+import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
+import type { Antenna, AlarmSeverity, Alarm, DashboardSummary } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
@@ -50,7 +51,6 @@ export default function AlarmsPage() {
 
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
-  const [incidents, setIncidents] = useState<Incident[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -60,11 +60,16 @@ export default function AlarmsPage() {
   const [chronicExpanded, setChronicExpanded] = useState(true)
   const [liveExpanded, setLiveExpanded] = useState(true)
 
+  const { snapshot, openIncidents } = useLiveSnapshot(!!user)
+  const incidents = openIncidents
+  const activeAlarms = useMemo(() => snapshot?.activeAlarms ?? [], [snapshot])
+
+  // One-shot fetches: antenna positions + dashboard-summary's long-lived
+  // alarms. Manual refresh available via the refreshKey button.
   useEffect(() => {
     if (!user) return
     let cancelled = false
-
-    const fetchData = async () => {
+    void (async () => {
       try {
         const [{ antennas: antennasData }, idToken] = await Promise.all([
           getAntennas(),
@@ -80,37 +85,38 @@ export default function AlarmsPage() {
         const summary = await res.json() as DashboardSummary
         if (cancelled) return
         setLongLivedAlarms(summary.longLivedAlarms)
-        setIncidents(summary.incidents)
         setLastUpdated(new Date())
       } catch {
         // keep stale data on error
       } finally {
         if (!cancelled) setLoading(false)
       }
-    }
-
-    void fetchData()
-    const id = setInterval(() => { void fetchData() }, 30_000)
-    return () => { cancelled = true; clearInterval(id) }
+    })()
+    return () => { cancelled = true }
   }, [user, refreshKey])
 
+  const antennaById = useMemo(() => {
+    const m: Record<string, Antenna> = {}
+    for (const a of antennas) m[a.id] = a
+    return m
+  }, [antennas])
+
   /* ── Live alerts (all active) ── */
-  const allActiveAlerts = useMemo(() =>
-    antennas
-      .flatMap(a => (a.cells || [])
-        .filter(c => c.currentAlarm && !c.currentAlarm.resolved)
-        .map(c => {
-          const alarm = c.currentAlarm!
-          const incident = incidents.find(i => incidentMatchesAlarm(i, alarm))
-          const city = cityForAntenna(a.latitude, a.longitude)
-          return { ...alarm, antennaName: a.name, incident, city }
-        })
-      )
+  const allActiveAlerts = useMemo(() => {
+    const rows = activeAlarms.flatMap(alarm => {
+      if (alarm.resolved) return []
+      const a = antennaById[alarm.antennaId]
+      if (!a) return []
+      const incident = incidents.find(i => incidentMatchesAlarm(i, alarm))
+      const city = cityForAntenna(a.latitude, a.longitude)
+      return [{ ...alarm, antennaName: a.name, incident, city }]
+    })
+    return rows
       .sort((a, b) =>
         severityRank[b.severity] - severityRank[a.severity] ||
         new Date(b.alarmTime).getTime() - new Date(a.alarmTime).getTime()
-      ),
-  [antennas, incidents])
+      )
+  }, [activeAlarms, antennaById, incidents])
 
   const filteredLive = useMemo(() =>
     liveFilter === 'all' ? allActiveAlerts : allActiveAlerts.filter(a => a.severity === liveFilter),

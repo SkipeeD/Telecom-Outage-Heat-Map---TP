@@ -22,6 +22,9 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/operation-not-allowed':                  'This sign-in method is not enabled. Contact your administrator.',
   'auth/requires-recent-login':                  'Please sign out and sign back in before making this change.',
   'auth/credential-already-in-use':             'These credentials are already linked to another account.',
+  'auth/missing-email':                          'Please enter an email address.',
+  'auth/invalid-action-code':                    'This reset link has expired or already been used. Request a new one.',
+  'auth/expired-action-code':                    'This reset link has expired. Please request a new one.',
 }
 
 export function getAuthErrorMessage(err: unknown): string {

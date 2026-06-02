@@ -9,7 +9,8 @@ import {
 import { incidentMatchesAlarm, getAntennas } from '@/lib/firestore'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
-import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary, Incident } from '@/types'
+import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
+import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import {
@@ -90,8 +91,22 @@ export default function DashboardPage() {
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
   const [longLivedAlarms, setLongLivedAlarms] = useState<Alarm[]>([])
-  const [incidents, setIncidents] = useState<Incident[]>([])
   const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
+
+  // Live state via meta/liveSnapshot — replaces the 30s antenna polling and
+  // 10s incident polling that previously ran on this page.
+  const { snapshot, openIncidents } = useLiveSnapshot(!!user)
+  const activeAlarms = useMemo(() => snapshot?.activeAlarms ?? [], [snapshot])
+
+  // Chart data needs historical resolved incidents too — comes from the
+  // 5-min-cached dashboard summary endpoint.
+  const [historicalIncidents, setHistoricalIncidents] = useState<DashboardSummary['incidents']>([])
+  const incidents = useMemo(() => {
+    const merged = new Map<string, DashboardSummary['incidents'][number]>()
+    for (const i of historicalIncidents) merged.set(i.incidentNumber, i)
+    for (const i of openIncidents)       merged.set(i.incidentNumber, i)
+    return Array.from(merged.values())
+  }, [historicalIncidents, openIncidents])
   
   const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
   const [selectedCity, setSelectedCity] = useState<CityWeatherDetail | null>(null)
@@ -125,18 +140,18 @@ export default function DashboardPage() {
     return () => clearInterval(interval)
   }, [isAutoScrolling])
 
+  // One-shot topology fetch on mount. Positions are static; live cell status
+  // is sourced from snapshot.antennaSeverity below.
   useEffect(() => {
     if (!user) return
     let cancelled = false
-    const fetchAntennas = async () => {
+    void (async () => {
       try {
         const { antennas: data } = await getAntennas()
         if (!cancelled) setAntennas(data)
-      } catch { /* retry on next interval */ }
-    }
-    void fetchAntennas()
-    const id = setInterval(() => void fetchAntennas(), 30_000)
-    return () => { cancelled = true; clearInterval(id) }
+      } catch { /* keep stale */ }
+    })()
+    return () => { cancelled = true }
   }, [user])
 
   useEffect(() => {
@@ -158,7 +173,7 @@ export default function DashboardPage() {
 
         setResolvedAlarms(summary.resolvedAlarms)
         setLongLivedAlarms(summary.longLivedAlarms)
-        setIncidents(summary.incidents)
+        setHistoricalIncidents(summary.incidents)
       } catch {
         // dashboard history is non-critical; live topology stays active
       }
@@ -250,18 +265,26 @@ export default function DashboardPage() {
       '2G': 0, '3G': 0, '4G': 0, '5G': 0, '6G': 0
     }
 
+    const severityMap = snapshot?.antennaSeverity ?? {}
+    const worstActiveAlarmByAntenna = new Map<string, Alarm>()
+    for (const alarm of activeAlarms) {
+      if (alarm.resolved) continue
+      const cur = worstActiveAlarmByAntenna.get(alarm.antennaId)
+      if (!cur || severityRank[alarm.severity] > severityRank[cur.severity]) {
+        worstActiveAlarmByAntenna.set(alarm.antennaId, alarm)
+      }
+    }
+
     antennas.forEach(a => {
-      const status = getWorstStatus(a)
+      const status: AlarmSeverity = severityMap[a.id] ?? (getWorstStatus(a) === 'ok' ? 'ok' : getWorstStatus(a))
       severityCount[status]++
       if (status === 'ok') ok++
       else alarms++
 
-      // Count worst tech for alarms
-      if (status !== 'ok' && a.cells.length > 0) {
-        const worstCell = a.cells.reduce((prev, curr) => 
-          severityRank[curr.status] > severityRank[prev.status] ? curr : prev
-        )
-        techCount[worstCell.technology]++
+      if (status !== 'ok') {
+        const worstAlarm = worstActiveAlarmByAntenna.get(a.id)
+        const tech: Technology = worstAlarm?.technology ?? a.cells[0]?.technology ?? '4G'
+        techCount[tech]++
       }
     })
 
@@ -319,7 +342,7 @@ export default function DashboardPage() {
       .map(({ date, created, resolved }) => ({ date, created, resolved }))
 
     return { total, alarms, ok, pieData, barData, resolvedChartData }
-  }, [antennas, incidents, timeRange])
+  }, [antennas, incidents, timeRange, snapshot, activeAlarms])
 
   const exportResolvedToExcel = () => {
     if (resolvedAlarms.length === 0) return
