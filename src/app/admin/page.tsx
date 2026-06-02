@@ -37,11 +37,10 @@ export default function AdminPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
-    const tab = searchParams.get('tab')
-    return tab === 'incidents' ? 'incidents' : 'users'
-  })
+  const tabFromUrl = searchParams.get('tab')
   const incidentFromUrl = searchParams.get('incident')
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => tabFromUrl === 'incidents' ? 'incidents' : 'users')
+  const [highlightIncident, setHighlightIncident] = useState<string | undefined>(() => incidentFromUrl ?? undefined)
   const [users, setUsers] = useState<UserProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
@@ -53,6 +52,30 @@ export default function AdminPage() {
       router.replace('/dashboard')
     }
   }, [authLoading, profile, router])
+
+  useEffect(() => {
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+
+      if (incidentFromUrl) {
+        setActiveTab('incidents')
+        setHighlightIncident(incidentFromUrl)
+        router.replace('/admin?tab=incidents', { scroll: false })
+        return
+      }
+
+      if (tabFromUrl === 'incidents') {
+        setActiveTab('incidents')
+      } else if (!tabFromUrl) {
+        setActiveTab('users')
+        setHighlightIncident(undefined)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [incidentFromUrl, router, tabFromUrl])
 
   const [usersRefreshKey, setUsersRefreshKey] = useState(0)
 
@@ -87,6 +110,12 @@ export default function AdminPage() {
     } finally {
       setUpdating(null)
     }
+  }
+
+  function handleTabClick(tab: AdminTab) {
+    setActiveTab(tab)
+    setHighlightIncident(undefined)
+    router.replace(tab === 'incidents' ? '/admin?tab=incidents' : '/admin', { scroll: false })
   }
 
   if (authLoading || !canManageUsers(profile?.role)) return null
@@ -126,7 +155,7 @@ export default function AdminPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabClick(tab.id)}
                 className="px-5 py-2.5 text-[13px] font-medium border-b-2 transition-colors duration-150 cursor-pointer"
                 style={{
                   color:            isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
@@ -292,7 +321,7 @@ export default function AdminPage() {
         )}
 
         {/* ── Incidents tab ───────────────────────────────────── */}
-        {activeTab === 'incidents' && <IncidentsPanel highlightIncident={incidentFromUrl ?? undefined} />}
+        {activeTab === 'incidents' && <IncidentsPanel highlightIncident={highlightIncident} />}
 
       </motion.div>
     </div>

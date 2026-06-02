@@ -62,7 +62,7 @@ export function NotificationBell() {
   }
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative z-[10001]" ref={containerRef}>
       <motion.button
         whileTap={{ scale: 0.93 }}
         onClick={() => { setOpen(v => !v); if (!open && unreadCount > 0) markAllRead() }}
@@ -103,7 +103,7 @@ export function NotificationBell() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
               transition={{ duration: 0.18, ease: EASE }}
-              className="absolute right-0 top-10 z-50 w-[340px] rounded-[var(--radius-lg)] overflow-hidden"
+              className="absolute right-0 top-10 z-[10002] w-[340px] rounded-[var(--radius-lg)] overflow-hidden"
               style={{
                 background: 'var(--bg-overlay)',
                 border: '1px solid var(--glass-border)',
