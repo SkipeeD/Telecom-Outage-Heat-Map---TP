@@ -81,6 +81,8 @@ function MapPageInner() {
   // filter bar). Counts always reflect ALL antennas, never filtered.
   const filteredAntennas = useMemo(() => {
     if (selectedSeverity === 'all') return antennas
+    if (selectedSeverity === 'active')
+      return antennas.filter(a => a.cells.some(c => c.status !== 'ok'))
     return antennas.filter(a => a.cells.some(c => c.status === selectedSeverity))
   }, [antennas, selectedSeverity])
 
@@ -88,7 +90,7 @@ function MapPageInner() {
   useEffect(() => {
     if (baseAntennas.length === 0) return
     const counts: Record<FilterSeverity, number> = {
-      all: baseAntennas.length, ok: 0, critical: 0, major: 0, minor: 0, warning: 0,
+      all: baseAntennas.length, active: 0, ok: 0, critical: 0, major: 0, minor: 0, warning: 0,
     }
     const severityMap = snapshot?.antennaSeverity ?? {}
     let nonOk = 0
@@ -100,6 +102,7 @@ function MapPageInner() {
       }
     }
     counts.ok = baseAntennas.length - nonOk
+    counts.active = nonOk
     setCounts(counts)
   }, [baseAntennas, snapshot, setCounts])
 
@@ -177,9 +180,12 @@ function MapPageInner() {
   if (authLoading) return null
 
   const activeFilters = {
-    severities: selectedSeverity === 'all'
-      ? undefined
-      : [selectedSeverity as AlarmSeverity]
+    severities:
+      selectedSeverity === 'all'
+        ? undefined
+        : selectedSeverity === 'active'
+        ? (['critical', 'major', 'minor', 'warning'] as AlarmSeverity[])
+        : [selectedSeverity as AlarmSeverity]
   }
 
   return (

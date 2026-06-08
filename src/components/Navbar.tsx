@@ -78,6 +78,7 @@ const BASE_NAV_TABS = [
 
 const SEVERITY_FILTERS: { key: FilterSeverity; label: string; color: string }[] = [
   { key: 'all',      label: 'All',      color: 'var(--accent)' },
+  { key: 'active',   label: 'Active',   color: 'var(--accent)' },
   { key: 'critical', label: 'Critical', color: 'var(--alarm-critical)' },
   { key: 'major',    label: 'Major',    color: 'var(--alarm-major)' },
   { key: 'minor',    label: 'Minor',    color: 'var(--alarm-minor)' },
@@ -164,7 +165,7 @@ export default function Navbar() {
           transform: `translateX(${isMapPage ? 0 : centerOffset}px)`,
           transition: 'transform 360ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}
-        className="justify-self-center flex items-center gap-1.5 p-1
+        className="justify-self-center flex items-center gap-1 p-1
         bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)]"
       >
         {/* Dashboard / Map toggle — always visible */}
@@ -176,7 +177,7 @@ export default function Navbar() {
               whileTap={{ scale: 0.96 }}
               onClick={() => router.push(href)}
               className={cn(
-                'relative px-3 py-1 rounded-[var(--radius-md)]',
+                'relative px-2 py-1 rounded-[var(--radius-md)]',
                 'text-[11px] font-medium uppercase tracking-widest transition-colors duration-150 border border-transparent overflow-hidden',
                 isActive
                   ? 'text-white'
@@ -204,10 +205,10 @@ export default function Navbar() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '4px',
             overflow: 'hidden',
             maxWidth: isMapPage ? '720px' : '0px',
-            marginLeft: isMapPage ? '0px' : '-6px',
+            marginLeft: isMapPage ? '0px' : '-4px',
             opacity: isMapPage ? 1 : 0,
             pointerEvents: isMapPage ? 'auto' : 'none',
             transition:
@@ -226,7 +227,7 @@ export default function Navbar() {
                 onClick={() => setSelectedSeverity(key)}
                 tabIndex={isMapPage ? 0 : -1}
                 className={cn(
-                  'relative flex items-center gap-2 px-3 py-1 rounded-[var(--radius-md)] shrink-0',
+                  'relative flex items-center gap-1.5 px-2 py-1 rounded-[var(--radius-md)] shrink-0',
                   'text-[11px] font-medium uppercase tracking-widest transition-colors duration-150 border border-transparent overflow-hidden',
                   isActive
                     ? 'text-white'

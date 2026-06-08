@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useMemo } from 'react'
 import type { AlarmSeverity } from '@/types'
 
-export type FilterSeverity = AlarmSeverity | 'all'
+export type FilterSeverity = AlarmSeverity | 'all' | 'active'
 
 interface FilterContextType {
   selectedSeverity: FilterSeverity
@@ -18,6 +18,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
   const [selectedSeverity, setSelectedSeverity] = useState<FilterSeverity>('all')
   const [counts, setCounts] = useState<Record<FilterSeverity, number>>({
     all: 0,
+    active: 0,
     critical: 0,
     major: 0,
     minor: 0,
