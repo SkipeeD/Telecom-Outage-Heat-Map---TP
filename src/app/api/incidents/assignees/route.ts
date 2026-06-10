@@ -4,8 +4,9 @@ import { getAdminDb } from '@/lib/firebase-admin'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
 import { snapshotOnIncidentUpdated } from '@/lib/live-snapshot'
 import { logIncidentActivity, actorName } from '@/lib/incident-activity'
-import { sendAssignmentNotification } from '@/lib/email'
-import type { Incident, IncidentAssignee } from '@/types'
+import { sendEngineerAssignmentNotification } from '@/lib/email'
+import { getIncidentDocByNumber } from '@/lib/incident-doc'
+import type { IncidentAssignee } from '@/types'
 
 export const runtime = 'nodejs'
 
@@ -13,6 +14,10 @@ export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth
   const caller = auth
+
+  if (caller.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   try {
     const { incidentNumber, assignees } = await req.json() as {
@@ -24,28 +29,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
     }
 
+    const invalidAssignee = assignees.some(a =>
+      !a ||
+      typeof a.uid !== 'string' ||
+      typeof a.email !== 'string' ||
+      (a.displayName !== undefined && typeof a.displayName !== 'string')
+    )
+    if (invalidAssignee) {
+      return NextResponse.json({ error: 'Invalid assignee' }, { status: 400 })
+    }
+
+    const nextAssignees = [...new Map(assignees.map(a => [a.uid, a])).values()]
+    if (nextAssignees.length > 1) {
+      return NextResponse.json({ error: 'Only one engineer can be assigned to an incident' }, { status: 400 })
+    }
+
     const db = getAdminDb()
-    const ref = db.collection('incidents').doc(incidentNumber)
-    const snap = await ref.get()
-    if (!snap.exists) {
+    const doc = await getIncidentDocByNumber(db, incidentNumber)
+    if (!doc) {
       return NextResponse.json({ error: 'Incident not found' }, { status: 404 })
     }
-    const prev = snap.data() as Incident
-    await ref.update({ assignees })
+    const { ref, incident: prev } = doc
+    await ref.update({
+      assignee:  nextAssignees[0]?.uid ?? '',
+      assignees: nextAssignees,
+    })
 
     // Only the open-incident list cares about assignees (so engineers see
     // their assignment update without a page refresh). Status/urgency are
     // unchanged so totals don't move.
+    const nextIncident = {
+      ...prev,
+      assignee:  nextAssignees[0]?.uid ?? '',
+      assignees: nextAssignees,
+    }
     if (prev.status === 'ASSIGNED' || prev.status === 'IN PROGRESS') {
-      await snapshotOnIncidentUpdated(prev, { ...prev, assignees }, db)
+      await snapshotOnIncidentUpdated(prev, nextIncident, db)
     }
 
     const prevUids = new Set((prev.assignees ?? []).map(a => a.uid))
-    const nextUids = new Set(assignees.map(a => a.uid))
+    const nextUids = new Set(nextAssignees.map(a => a.uid))
     const now = new Date().toISOString()
     const name = actorName(caller)
 
-    for (const a of assignees) {
+    for (const a of nextAssignees) {
       if (!prevUids.has(a.uid)) {
         void logIncidentActivity(db, incidentNumber, {
           type:      'assigned',
@@ -56,11 +83,11 @@ export async function POST(req: NextRequest) {
         })
 
         // Notify via email
-        void sendAssignmentNotification({
-          engineerEmail:  a.email,
-          incidentNumber: incidentNumber,
-          location:       prev.siteIds?.join(', ') || prev.siteId || 'Unknown',
-          urgency:        prev.urgency || 'N/A',
+        void sendEngineerAssignmentNotification({
+          engineerEmail: a.email,
+          engineerName:  a.displayName,
+          incident:      nextIncident,
+          technicians:   nextIncident.technicians ?? [],
         })
       }
     }

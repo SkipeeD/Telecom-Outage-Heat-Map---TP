@@ -4,7 +4,8 @@ import { getAdminDb } from '@/lib/firebase-admin'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
 import { snapshotOnIncidentUpdated } from '@/lib/live-snapshot'
 import { logIncidentActivity, actorName } from '@/lib/incident-activity'
-import { sendAssignmentNotification } from '@/lib/email'
+import { sendEngineerAssignmentNotification } from '@/lib/email'
+import { getIncidentDocByNumber } from '@/lib/incident-doc'
 import type { Incident } from '@/types'
 
 export const runtime = 'nodejs'
@@ -51,62 +52,74 @@ export async function POST(req: NextRequest) {
     }
 
     const db = getAdminDb()
+    const [targetDoc, sourceDoc] = await Promise.all([
+      getIncidentDocByNumber(db, target.incidentNumber),
+      getIncidentDocByNumber(db, source.incidentNumber),
+    ])
+    if (!targetDoc || !sourceDoc) {
+      return NextResponse.json({ error: 'Incident not found' }, { status: 404 })
+    }
+    const currentTarget = targetDoc.incident
+    const currentSource = sourceDoc.incident
     const now = new Date().toISOString()
-    const targetPriority = target.priority ?? target.urgency
-    const sourcePriority = source.priority ?? source.urgency
+    const targetPriority = currentTarget.priority ?? currentTarget.urgency
+    const sourcePriority = currentSource.priority ?? currentSource.urgency
     const shouldEscalate = priorityRank(sourcePriority) < priorityRank(targetPriority)
 
-    const assigneesByUid = new Map(
-      [...(target.assignees ?? []), ...(source.assignees ?? [])].map(a => [a.uid, a])
-    )
+    const targetOwner = (currentTarget.assignees ?? [])[0] ?? null
+    const sourceOwner = (currentSource.assignees ?? [])[0] ?? null
+    const nextOwner = targetOwner ?? sourceOwner
+    const nextAssignees = nextOwner ? [nextOwner] : []
 
     await Promise.all([
-      db.collection('incidents').doc(target.incidentNumber).update({
-        siteIds:      unique([...incidentSites(target), ...incidentSites(source)]),
-        antennaIds:   unique([...incidentAntennas(target), ...incidentAntennas(source)]),
-        alarmIds:     unique([...incidentAlarms(target), ...incidentAlarms(source)]),
-        technologies: unique([...incidentTechnologies(target), ...incidentTechnologies(source)]),
-        assignees:    [...assigneesByUid.values()],
+      targetDoc.ref.update({
+        siteIds:      unique([...incidentSites(currentTarget), ...incidentSites(currentSource)]),
+        antennaIds:   unique([...incidentAntennas(currentTarget), ...incidentAntennas(currentSource)]),
+        alarmIds:     unique([...incidentAlarms(currentTarget), ...incidentAlarms(currentSource)]),
+        technologies: unique([...incidentTechnologies(currentTarget), ...incidentTechnologies(currentSource)]),
+        assignee:     nextOwner?.uid ?? '',
+        assignees:    nextAssignees,
         ...(shouldEscalate ? {
-          urgency:  source.urgency,
-          priority: source.priority,
-          impact:   source.impact,
+          urgency:  currentSource.urgency,
+          priority: currentSource.priority,
+          impact:   currentSource.impact,
         } : {}),
       }),
-      db.collection('incidents').doc(source.incidentNumber).update({
+      sourceDoc.ref.update({
         status:       'CLOSED',
         closedDate:   now,
-        resolvedDate: source.resolvedDate ?? now,
-        mergedInto:   target.incidentNumber,
+        resolvedDate: currentSource.resolvedDate ?? now,
+        mergedInto:   currentTarget.incidentNumber,
       }),
     ])
 
-    const sourceAlarmIds = incidentAlarms(source)
+    const sourceAlarmIds = incidentAlarms(currentSource)
     await Promise.all(sourceAlarmIds.map(alarmId =>
-      db.collection('alarms').doc(alarmId).update({ incidentId: target.incidentNumber }).catch(() => {})
+      db.collection('alarms').doc(alarmId).update({ incidentId: currentTarget.incidentNumber }).catch(() => {})
     ))
 
     // Mirror in liveSnapshot: target gains scope (and possibly urgency),
     // source transitions to CLOSED.
     const nextTarget: Incident = {
-      ...target,
-      siteIds:      unique([...incidentSites(target), ...incidentSites(source)]),
-      antennaIds:   unique([...incidentAntennas(target), ...incidentAntennas(source)]),
-      alarmIds:     unique([...incidentAlarms(target), ...incidentAlarms(source)]),
-      technologies: unique([...incidentTechnologies(target), ...incidentTechnologies(source)]),
-      assignees:    [...assigneesByUid.values()],
-      ...(shouldEscalate ? { urgency: source.urgency, priority: source.priority, impact: source.impact } : {}),
+      ...currentTarget,
+      siteIds:      unique([...incidentSites(currentTarget), ...incidentSites(currentSource)]),
+      antennaIds:   unique([...incidentAntennas(currentTarget), ...incidentAntennas(currentSource)]),
+      alarmIds:     unique([...incidentAlarms(currentTarget), ...incidentAlarms(currentSource)]),
+      technologies: unique([...incidentTechnologies(currentTarget), ...incidentTechnologies(currentSource)]),
+      assignee:     nextOwner?.uid ?? '',
+      assignees:    nextAssignees,
+      ...(shouldEscalate ? { urgency: currentSource.urgency, priority: currentSource.priority, impact: currentSource.impact } : {}),
     }
     const nextSource: Incident = {
-      ...source,
+      ...currentSource,
       status:       'CLOSED',
       closedDate:   now,
-      resolvedDate: source.resolvedDate ?? now,
-      mergedInto:   target.incidentNumber,
+      resolvedDate: currentSource.resolvedDate ?? now,
+      mergedInto:   currentTarget.incidentNumber,
     }
     await Promise.all([
-      snapshotOnIncidentUpdated(target, nextTarget, db),
-      snapshotOnIncidentUpdated(source, nextSource, db),
+      snapshotOnIncidentUpdated(currentTarget, nextTarget, db),
+      snapshotOnIncidentUpdated(currentSource, nextSource, db),
     ])
 
     const name = actorName(caller)
@@ -114,28 +127,25 @@ export async function POST(req: NextRequest) {
       type:      'merged',
       actorUid:  caller.uid,
       actorName: name,
-      message:   `Merged ${source.incidentNumber} into this incident`,
+      message:   `Merged ${currentSource.incidentNumber} into this incident`,
       timestamp: now,
     })
 
-    // Notify engineers from the source incident that they are now assigned to the target incident
-    const targetUidSet = new Set((target.assignees ?? []).map(a => a.uid))
-    for (const a of (source.assignees ?? [])) {
-      if (!targetUidSet.has(a.uid)) {
-        void sendAssignmentNotification({
-          engineerEmail:  a.email,
-          incidentNumber: target.incidentNumber,
-          location:       nextTarget.siteIds?.join(', ') || nextTarget.siteId || 'Unknown',
-          urgency:        nextTarget.urgency || 'N/A',
-        })
-      }
+    // If the target was unowned, the source owner becomes the single owner.
+    if (!targetOwner && sourceOwner) {
+      void sendEngineerAssignmentNotification({
+        engineerEmail: sourceOwner.email,
+        engineerName:  sourceOwner.displayName,
+        incident:      nextTarget,
+        technicians:   nextTarget.technicians ?? [],
+      })
     }
 
     void logIncidentActivity(db, source.incidentNumber, {
       type:      'merged',
       actorUid:  caller.uid,
       actorName: name,
-      message:   `Merged into ${target.incidentNumber}`,
+      message:   `Merged into ${currentTarget.incidentNumber}`,
       timestamp: now,
     })
 

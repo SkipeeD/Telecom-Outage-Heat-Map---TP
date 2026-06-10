@@ -49,6 +49,12 @@ const riskColors: Record<string, string> = {
 
 const riskRank: Record<string, number> = { high: 3, medium: 2, low: 1 }
 
+type WeatherPrediction = {
+  outlook: string
+  riskZones: { city: string; reason: string; severity: string; conditions?: string }[]
+  recommendation: string
+}
+
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
@@ -122,15 +128,17 @@ export default function DashboardPage() {
   
   const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
   const [selectedCity, setSelectedCity] = useState<CityWeatherDetail | null>(null)
-  const [aiPrediction, setAiPrediction] = useState<{
-    outlook: string
-    riskZones: { city: string; reason: string; severity: string; conditions?: string }[]
-    recommendation: string
-  } | null>(null)
+  const [aiPrediction, setAiPrediction] = useState<WeatherPrediction | null>(null)
   const [loadingAi, setLoadingAi] = useState(false)
   const [aiError, setAiError] = useState(false)
   const [isAutoScrolling, setIsAutoScrolling] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const loadingAiRef = useRef(false)
+  const aiPredictionRef = useRef<WeatherPrediction | null>(null)
+
+  useEffect(() => {
+    aiPredictionRef.current = aiPrediction
+  }, [aiPrediction])
 
   useEffect(() => {
     if (!isAutoScrolling || !scrollRef.current) return
@@ -199,7 +207,8 @@ export default function DashboardPage() {
   }, [user])
 
   const fetchAiPrediction = useCallback(async (details: CityWeatherDetail[]) => {
-    if (details.length === 0 || loadingAi) return
+    if (details.length === 0 || loadingAiRef.current) return
+    loadingAiRef.current = true
     setLoadingAi(true)
     setAiError(false)
     try {
@@ -210,6 +219,7 @@ export default function DashboardPage() {
       })
       if (res.ok) {
         const data = await res.json()
+        aiPredictionRef.current = data
         setAiPrediction(data)
       } else {
         setAiError(true)
@@ -218,9 +228,10 @@ export default function DashboardPage() {
       console.error('AI Prediction fetch failed', err)
       setAiError(true)
     } finally {
+      loadingAiRef.current = false
       setLoadingAi(false)
     }
-  }, [loadingAi])
+  }, [])
 
   const fetchWeather = useCallback(async () => {
     try {
@@ -231,14 +242,14 @@ export default function DashboardPage() {
         const sorted = [...details].sort((a, b) => riskRank[b.risk] - riskRank[a.risk])
         setWeatherDetails(sorted)
         
-        if (!aiPrediction) {
+        if (!aiPredictionRef.current) {
           void fetchAiPrediction(details)
         }
       }
     } catch {
       // non-critical — weather data stays empty on failure
     }
-  }, [aiPrediction, fetchAiPrediction])
+  }, [fetchAiPrediction])
 
   useEffect(() => {
     if (!user) return

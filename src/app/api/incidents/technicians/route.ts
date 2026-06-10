@@ -4,8 +4,9 @@ import { getAdminDb } from '@/lib/firebase-admin'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
 import { snapshotOnIncidentUpdated } from '@/lib/live-snapshot'
 import { logIncidentActivity, actorName } from '@/lib/incident-activity'
-import { sendAssignmentNotification } from '@/lib/email'
-import type { Incident, IncidentAssignee } from '@/types'
+import { sendTechnicianAssignmentNotification } from '@/lib/email'
+import { getIncidentDocByNumber } from '@/lib/incident-doc'
+import type { IncidentAssignee } from '@/types'
 
 export const runtime = 'nodejs'
 
@@ -29,27 +30,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
     }
 
+    const invalidTechnician = technicians.some(t =>
+      !t ||
+      typeof t.uid !== 'string' ||
+      typeof t.email !== 'string' ||
+      (t.displayName !== undefined && typeof t.displayName !== 'string')
+    )
+    if (invalidTechnician) {
+      return NextResponse.json({ error: 'Invalid technician' }, { status: 400 })
+    }
+    const nextTechnicians = [...new Map(technicians.map(t => [t.uid, t])).values()]
+
     const db = getAdminDb()
-    const ref = db.collection('incidents').doc(incidentNumber)
-    const snap = await ref.get()
-    if (!snap.exists) {
+    const doc = await getIncidentDocByNumber(db, incidentNumber)
+    if (!doc) {
       return NextResponse.json({ error: 'Incident not found' }, { status: 404 })
     }
-    const prev = snap.data() as Incident
-    await ref.update({ technicians })
+    const { ref, incident: prev } = doc
+    if (caller.role === 'engineer' && !(prev.assignees ?? []).some(a => a.uid === caller.uid)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    await ref.update({ technicians: nextTechnicians })
 
     // Keep the open-incident mirror in sync so technicians see new dispatches
     // without a refresh. Status/urgency unchanged so totals don't move.
+    const nextIncident = { ...prev, technicians: nextTechnicians }
     if (prev.status === 'ASSIGNED' || prev.status === 'IN PROGRESS') {
-      await snapshotOnIncidentUpdated(prev, { ...prev, technicians }, db)
+      await snapshotOnIncidentUpdated(prev, nextIncident, db)
     }
 
     const prevUids = new Set((prev.technicians ?? []).map(t => t.uid))
-    const nextUids = new Set(technicians.map(t => t.uid))
+    const nextUids = new Set(nextTechnicians.map(t => t.uid))
     const now = new Date().toISOString()
     const name = actorName(caller)
+    const assignedEngineer = (prev.assignees ?? [])[0] ?? null
 
-    for (const t of technicians) {
+    for (const t of nextTechnicians) {
       if (!prevUids.has(t.uid)) {
         void logIncidentActivity(db, incidentNumber, {
           type:      'assigned',
@@ -60,11 +76,12 @@ export async function POST(req: NextRequest) {
         })
 
         // Notify the technician via email
-        void sendAssignmentNotification({
-          engineerEmail:  t.email,
-          incidentNumber: incidentNumber,
-          location:       prev.siteIds?.join(', ') || prev.siteId || 'Unknown',
-          urgency:        prev.urgency || 'N/A',
+        void sendTechnicianAssignmentNotification({
+          technicianEmail: t.email,
+          technicianName:  t.displayName,
+          incident:        nextIncident,
+          assignedEngineer,
+          technicians:     nextTechnicians,
         })
       }
     }

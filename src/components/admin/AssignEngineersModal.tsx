@@ -78,10 +78,7 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
   }
 
   function toggleUid(uid: string, checked: boolean) {
-    const next = new Set(pendingUids)
-    if (checked) next.add(uid)
-    else next.delete(uid)
-    setPendingUids(next)
+    setPendingUids(checked ? new Set([uid]) : new Set())
   }
 
   const statusColor = incident ? (INC_STATUS_COLOR[incident.status] ?? 'var(--text-muted)') : ''
@@ -108,7 +105,7 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
             key="modal"
             role="dialog"
             aria-modal
-            aria-label="Assign engineers"
+            aria-label="Assign engineer"
             initial={shouldReduce ? {} : { opacity: 0, scale: 0.94, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={shouldReduce ? {} : { opacity: 0, scale: 0.96, y: 8, transition: { duration: 0.16 } }}
@@ -129,10 +126,10 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
               <div className="flex items-start justify-between gap-3 mb-3.5">
                 <div>
                   <div className="text-[16px] font-semibold text-[var(--text-primary)] leading-snug">
-                    Assign Engineers
+                    Assign Engineer
                   </div>
                   <div className="text-[12px] text-[var(--text-muted)] mt-0.5">
-                    Select who should work on this incident
+                    Select the owning engineer for this incident
                   </div>
                 </div>
                 <button
@@ -266,8 +263,8 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
               <div className="flex flex-col gap-1">
                 <span className="font-mono text-[11px] text-[var(--text-muted)]">
                   {pendingUids.size === 0
-                    ? 'No engineers selected'
-                    : `${pendingUids.size} engineer${pendingUids.size !== 1 ? 's' : ''} selected`}
+                    ? 'No engineer selected'
+                    : '1 engineer selected'}
                 </span>
                 {saveError && (
                   <span className="font-mono text-[11px]" style={{ color: 'var(--alarm-critical)' }}>
