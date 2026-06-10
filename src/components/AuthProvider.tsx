@@ -5,6 +5,7 @@ import { getIdTokenResult, onAuthStateChanged, User } from 'firebase/auth'
 import { auth, db } from '@/lib/firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { usePathname, useRouter } from 'next/navigation'
+import { homeRouteForRole } from '@/lib/roles'
 import type { UserProfile } from '@/types'
 
 interface AuthContextType {
@@ -24,7 +25,7 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext)
 
 function parseRoleClaim(role: unknown): UserProfile['role'] | undefined {
-  return role === 'admin' || role === 'engineer' || role === 'user'
+  return role === 'admin' || role === 'engineer' || role === 'technician' || role === 'user'
     ? role
     : undefined
 }
@@ -64,6 +65,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const firestoreProfile = profileSnap.data() as UserProfile
             setProfile({
               ...firestoreProfile,
+              // Older user docs were written without a `uid` field. Always pin it
+              // to the auth uid so assignment matching, chat and notifications work.
+              uid: firebaseUser.uid,
               role: roleFromClaim ?? firestoreProfile.role,
             })
           } else {
@@ -72,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await setDoc(profileRef, newProfile)
             setProfile({
               ...newProfile,
+              uid: firebaseUser.uid,
               role: roleFromClaim ?? newProfile.role,
             })
           }
@@ -107,8 +112,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user) {
       if (isVerified) {
         document.cookie = `auth-session=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
-        if (isLoginRoute) {
-          router.replace('/dashboard')
+        // Wait for the profile (role) before routing so each role lands on its
+        // own home — engineers/admins to the dashboard, technicians to their
+        // field console, normal users to the map.
+        if (isLoginRoute && profile) {
+          router.replace(homeRouteForRole(profile.role))
         }
       } else {
         document.cookie = 'auth-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
@@ -122,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.replace('/login')
       }
     }
-  }, [user, loading, pathname, router])
+  }, [user, profile, loading, pathname, router])
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, setProfile }}>

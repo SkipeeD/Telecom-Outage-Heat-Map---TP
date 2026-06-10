@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { uid, role } = await req.json()
-    if (!uid || !['user', 'engineer'].includes(role)) {
+    if (!uid || !['user', 'engineer', 'technician'].includes(role)) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
     }
 

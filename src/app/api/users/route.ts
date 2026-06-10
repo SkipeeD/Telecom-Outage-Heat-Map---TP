@@ -9,7 +9,10 @@ function toUserProfile(id: string, data: FirebaseFirestore.DocumentData): UserPr
     uid: typeof data.uid === 'string' ? data.uid : id,
     email: typeof data.email === 'string' ? data.email : '',
     displayName: typeof data.displayName === 'string' ? data.displayName : undefined,
-    role: data.role === 'admin' || data.role === 'engineer' ? data.role : 'user',
+    role:
+      data.role === 'admin' || data.role === 'engineer' || data.role === 'technician'
+        ? data.role
+        : 'user',
     createdAt: typeof data.createdAt === 'string' ? data.createdAt : new Date(0).toISOString(),
   }
 }

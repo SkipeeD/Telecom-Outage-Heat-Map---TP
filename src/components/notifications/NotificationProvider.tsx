@@ -91,7 +91,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const role = profile?.role
   const uid = profile?.uid ?? ''
 
-  const enabled = !!user && (role === 'admin' || role === 'engineer')
+  const enabled = !!user && (role === 'admin' || role === 'engineer' || role === 'technician')
   const { openIncidents } = useLiveSnapshot(enabled)
 
   const [notifications, setNotifications] = useState<AppNotification[]>([])
@@ -101,7 +101,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   })
 
   // Ref keeps the previous snapshot's incidentNumber → {status, assigneeUids} map
-  const prevMapRef = useRef<Map<string, { status: string; assigneeUids: Set<string> }>>(new Map())
+  const prevMapRef = useRef<Map<string, { status: string; assigneeUids: Set<string>; technicianUids: Set<string> }>>(new Map())
   // Tracks which P1 incidents have already fired the escalation alert
   const escalatedRef = useRef<Set<string>>(new Set())
   // True once the first snapshot has been processed (baseline established)
@@ -126,11 +126,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!enabled || !openIncidents) return
 
-    const currentMap = new Map<string, { status: string; assigneeUids: Set<string> }>()
+    const currentMap = new Map<string, { status: string; assigneeUids: Set<string>; technicianUids: Set<string> }>()
     for (const inc of openIncidents) {
       currentMap.set(inc.incidentNumber, {
         status: inc.status,
         assigneeUids: new Set((inc.assignees ?? []).map(a => a.uid)),
+        technicianUids: new Set((inc.technicians ?? []).map(t => t.uid)),
       })
     }
 
@@ -145,6 +146,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const prev = prevMapRef.current
 
+    // Collect during the pass and flush after, so no setState runs
+    // synchronously inside the effect body (avoids cascading renders).
+    const pending: { notif: Omit<AppNotification, 'id' | 'read'>; withSound: boolean }[] = []
+
     for (const inc of openIncidents) {
       const num = inc.incidentNumber
       const prevEntry = prev.get(num)
@@ -153,14 +158,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (role === 'admin' && !prevEntry && !seenRef.current.has(num)) {
         seenRef.current.add(num)
         if (uid) persistSeen(uid, seenRef.current)
-        fire({
-          incidentNumber: num,
-          type: 'new_incident',
-          title: 'New Incident',
-          message: `${num} · ${(inc.siteIds ?? [inc.siteId]).join(', ')} · ${inc.priority}`,
-          priority: inc.priority,
-          timestamp: new Date().toISOString(),
-        }, inc.priority === '1-Critical' || inc.priority === '2-High')
+        pending.push({
+          notif: {
+            incidentNumber: num,
+            type: 'new_incident',
+            title: 'New Incident',
+            message: `${num} · ${(inc.siteIds ?? [inc.siteId]).join(', ')} · ${inc.priority}`,
+            priority: inc.priority,
+            timestamp: new Date().toISOString(),
+          },
+          withSound: inc.priority === '1-Critical' || inc.priority === '2-High',
+        })
       }
 
       // Engineers: assigned to me
@@ -168,19 +176,47 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         const prevUids = prevEntry?.assigneeUids ?? new Set()
         const nowUids = new Set((inc.assignees ?? []).map(a => a.uid))
         if (!prevUids.has(uid) && nowUids.has(uid)) {
-          fire({
-            incidentNumber: num,
-            type: 'assigned_to_me',
-            title: 'Incident Assigned',
-            message: `You've been assigned to ${num} · ${inc.priority}`,
-            priority: inc.priority,
-            timestamp: new Date().toISOString(),
-          }, true)
+          pending.push({
+            notif: {
+              incidentNumber: num,
+              type: 'assigned_to_me',
+              title: 'Incident Assigned',
+              message: `You've been assigned to ${num} · ${inc.priority}`,
+              priority: inc.priority,
+              timestamp: new Date().toISOString(),
+            },
+            withSound: true,
+          })
+        }
+      }
+
+      // Technicians: dispatched to me
+      if (role === 'technician' && uid) {
+        const prevUids = prevEntry?.technicianUids ?? new Set()
+        const nowUids = new Set((inc.technicians ?? []).map(t => t.uid))
+        if (!prevUids.has(uid) && nowUids.has(uid)) {
+          pending.push({
+            notif: {
+              incidentNumber: num,
+              type: 'assigned_to_me',
+              title: 'Job Dispatched',
+              message: `You've been dispatched to ${num} · ${inc.priority}`,
+              priority: inc.priority,
+              timestamp: new Date().toISOString(),
+            },
+            withSound: true,
+          })
         }
       }
     }
 
     prevMapRef.current = currentMap
+
+    if (pending.length > 0) {
+      queueMicrotask(() => {
+        for (const { notif, withSound } of pending) fire(notif, withSound)
+      })
+    }
   }, [openIncidents, enabled, role, uid, fire])
 
   // Admins: P1 escalation — poll for unacknowledged critical incidents

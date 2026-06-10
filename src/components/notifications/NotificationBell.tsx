@@ -49,13 +49,15 @@ export function NotificationBell() {
   }, [open])
 
   // Only render for admin and engineer roles
-  if (role !== 'admin' && role !== 'engineer') return null
+  if (role !== 'admin' && role !== 'engineer' && role !== 'technician') return null
 
   function handleNotifClick(n: AppNotification) {
     dismiss(n.id)
     setOpen(false)
     if (role === 'admin') {
       router.push(`/admin?tab=incidents&incident=${n.incidentNumber}`)
+    } else if (role === 'technician') {
+      router.push(`/technician?incident=${n.incidentNumber}`)
     } else {
       router.push(`/engineer?incident=${n.incidentNumber}`)
     }
