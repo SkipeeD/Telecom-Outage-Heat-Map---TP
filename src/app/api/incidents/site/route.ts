@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
+import { incidentFromDoc } from '@/lib/incident-doc'
 import type { Incident } from '@/types'
 
 export const runtime = 'nodejs'
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     for (const d of [...snapNew.docs, ...snapLegacy.docs]) {
       if (!seen.has(d.id)) {
         seen.add(d.id)
-        incidents.push(d.data() as Incident)
+        incidents.push(incidentFromDoc(d.id, d.data()))
       }
     }
     incidents.sort((a, b) => new Date(b.submitDate).getTime() - new Date(a.submitDate).getTime())

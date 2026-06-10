@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
+import { incidentFromDoc } from '@/lib/incident-doc'
 import type { Incident } from '@/types'
 
 export const runtime = 'nodejs'
@@ -20,7 +21,7 @@ const fetchRecentIncidents = unstable_cache(
       .orderBy('submitDate', 'desc')
       .limit(INCIDENT_LIST_LIMIT)
       .get()
-    return snap.docs.map(d => d.data() as Incident)
+    return snap.docs.map(d => incidentFromDoc(d.id, d.data()))
   },
   ['incidents-recent-v1'],
   { revalidate: LEGACY_LIST_TTL_S },

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { requireAuth, isAuthError } from '@/lib/route-auth'
+import { incidentFromDoc } from '@/lib/incident-doc'
 import type { Incident } from '@/types'
 
 export const runtime = 'nodejs'
@@ -32,8 +33,8 @@ async function fetchHistoryPage(cursor: string, limit: number, assigneeUid: stri
   ])
 
   let docs = [
-    ...resolvedSnap.docs.map(d => d.data() as Incident),
-    ...closedSnap.docs.map(d => d.data() as Incident),
+    ...resolvedSnap.docs.map(d => incidentFromDoc(d.id, d.data())),
+    ...closedSnap.docs.map(d => incidentFromDoc(d.id, d.data())),
   ]
 
   if (sinceIso) docs = docs.filter(i => i.submitDate >= sinceIso)
