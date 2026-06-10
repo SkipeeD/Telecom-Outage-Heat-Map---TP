@@ -12,17 +12,17 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = getAdminDb()
-    const snapshot = await db.collection('users').where('role', '==', 'engineer').get()
+    const snapshot = await db.collection('users').where('role', '==', 'technician').get()
     // Pin uid to the doc id — some user docs predate the `uid` field.
-    const engineers: UserProfile[] = snapshot.docs.map(d => ({
+    const technicians: UserProfile[] = snapshot.docs.map(d => ({
       ...(d.data() as UserProfile),
       uid: (d.data().uid as string) ?? d.id,
     }))
     // Deduplicate by uid
-    const unique = [...new Map(engineers.map(e => [e.uid, e])).values()]
-    return NextResponse.json({ engineers: unique })
+    const unique = [...new Map(technicians.map(t => [t.uid, t])).values()]
+    return NextResponse.json({ technicians: unique })
   } catch (error) {
-    console.error('[/api/engineers]', error)
+    console.error('[/api/technicians]', error)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }

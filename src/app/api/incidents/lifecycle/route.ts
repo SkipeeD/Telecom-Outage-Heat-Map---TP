@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const caller = await adminAuth.verifyIdToken(authHeader.slice(7))
 
     const role = caller.role as Role | undefined
-    if (role !== 'engineer' && role !== 'admin') {
+    if (role !== 'engineer' && role !== 'admin' && role !== 'technician') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -44,7 +44,11 @@ export async function POST(req: NextRequest) {
     }
 
     const incident = snap.data() as Incident
-    const assignedToCaller = (incident.assignees ?? []).some(a => a.uid === caller.uid)
+    // The owning engineers (assignees) or the dispatched field technicians may
+    // drive the incident lifecycle; admins always may.
+    const assignedToCaller =
+      (incident.assignees ?? []).some(a => a.uid === caller.uid) ||
+      (incident.technicians ?? []).some(t => t.uid === caller.uid)
     if (role !== 'admin' && !assignedToCaller) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }

@@ -6,9 +6,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
 import { getAllUsers, updateUserRole } from '@/lib/firestore'
 import { canManageUsers } from '@/lib/roles'
+import { cn } from '@/lib/utils'
 import type { UserProfile } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Users, ShieldCheck, RefreshCw } from 'lucide-react'
 import { IncidentsPanel } from '@/components/admin/IncidentsPanel'
 
@@ -27,10 +27,18 @@ const itemVariants = {
 }
 
 const ROLE_CONFIG: Record<UserProfile['role'], { label: string; bg: string; border: string; color: string }> = {
-  admin:    { label: 'Admin',    bg: 'rgba(124,111,247,0.12)', border: 'rgba(124,111,247,0.3)', color: 'var(--accent-bright)' },
-  engineer: { label: 'Engineer', bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.3)',  color: 'var(--alarm-ok)' },
-  user:     { label: 'User',     bg: 'rgba(139,137,168,0.12)', border: 'rgba(139,137,168,0.25)', color: 'var(--text-secondary)' },
+  admin:      { label: 'Admin',      bg: 'rgba(124,111,247,0.12)', border: 'rgba(124,111,247,0.3)', color: 'var(--accent-bright)' },
+  engineer:   { label: 'Engineer',   bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.3)',  color: 'var(--alarm-ok)' },
+  technician: { label: 'Technician', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.3)',  color: 'var(--alarm-warning)' },
+  user:       { label: 'User',       bg: 'rgba(139,137,168,0.12)', border: 'rgba(139,137,168,0.25)', color: 'var(--text-secondary)' },
 }
+
+// Roles an admin can grant from the Users table (admin is granted via Firebase).
+const ASSIGNABLE_ROLES: { value: 'user' | 'engineer' | 'technician'; short: string }[] = [
+  { value: 'user',       short: 'User' },
+  { value: 'engineer',   short: 'Eng' },
+  { value: 'technician', short: 'Tech' },
+]
 
 export default function AdminPage() {
   const { profile, loading: authLoading } = useAuth()
@@ -98,9 +106,8 @@ export default function AdminPage() {
     }
   }, [authLoading, profile, usersRefreshKey])
 
-  async function handleRoleToggle(user: UserProfile) {
-    if (user.role === 'admin') return
-    const nextRole: 'user' | 'engineer' = user.role === 'engineer' ? 'user' : 'engineer'
+  async function handleSetRole(user: UserProfile, nextRole: 'user' | 'engineer' | 'technician') {
+    if (user.role === 'admin' || user.role === nextRole) return
     setUpdating(user.uid)
     try {
       await updateUserRole(user.uid, nextRole)
@@ -124,6 +131,7 @@ export default function AdminPage() {
     total:    users.length,
     admins:   users.filter(u => u.role === 'admin').length,
     engineers: users.filter(u => u.role === 'engineer').length,
+    technicians: users.filter(u => u.role === 'technician').length,
     regular:  users.filter(u => u.role === 'user').length,
   }
 
@@ -172,12 +180,13 @@ export default function AdminPage() {
         {activeTab === 'users' && (
           <>
             {/* Stats row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               {[
-                { label: 'Total Users', value: counts.total,      color: 'var(--text-primary)',   icon: Users },
-                { label: 'Admins',      value: counts.admins,     color: 'var(--accent-bright)',  icon: ShieldCheck },
-                { label: 'Engineers',   value: counts.engineers,  color: 'var(--alarm-ok)',       icon: null },
-                { label: 'Regular',     value: counts.regular,    color: 'var(--text-secondary)', icon: null },
+                { label: 'Total Users', value: counts.total,        color: 'var(--text-primary)',   icon: Users },
+                { label: 'Admins',      value: counts.admins,       color: 'var(--accent-bright)',  icon: ShieldCheck },
+                { label: 'Engineers',   value: counts.engineers,    color: 'var(--alarm-ok)',       icon: null },
+                { label: 'Technicians', value: counts.technicians,  color: 'var(--alarm-warning)',  icon: null },
+                { label: 'Regular',     value: counts.regular,      color: 'var(--text-secondary)', icon: null },
               ].map(stat => (
                 <motion.div key={stat.label} variants={itemVariants}>
                   <Card className="bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)] shadow-[var(--shadow-md)]">
@@ -244,7 +253,7 @@ export default function AdminPage() {
                         <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">Email</span>
                         <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] text-right">Role</span>
                         <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] text-right">Joined</span>
-                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] text-right w-[110px]">Action</span>
+                        <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] text-right w-[190px]">Action</span>
                       </div>
 
                       {users.map((user, i) => {
@@ -281,27 +290,32 @@ export default function AdminPage() {
                               {joined}
                             </span>
 
-                            <div className="w-[110px] flex justify-end">
+                            <div className="w-[190px] flex justify-end">
                               {user.role === 'admin' ? (
                                 <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest font-mono">
                                   Via Firebase
                                 </span>
                               ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={isUpdating || isMe}
-                                  onClick={() => handleRoleToggle(user)}
-                                  className="
-                                    h-7 text-[10px] font-medium uppercase tracking-widest
-                                    bg-[var(--glass-bg)] border-[var(--glass-border)]
-                                    hover:bg-[var(--glass-hover)] hover:border-[var(--border-strong)]
-                                    text-[var(--text-secondary)] hover:text-[var(--text-primary)]
-                                    disabled:opacity-40 disabled:cursor-not-allowed rounded-[var(--radius-md)]
-                                  "
-                                >
-                                  {isUpdating ? '…' : user.role === 'engineer' ? 'Revoke' : 'Promote'}
-                                </Button>
+                                <div className="inline-flex items-center rounded-[var(--radius-md)] border border-[var(--glass-border)] bg-[var(--glass-bg)] p-0.5">
+                                  {ASSIGNABLE_ROLES.map(({ value, short }) => {
+                                    const active = user.role === value
+                                    return (
+                                      <button
+                                        key={value}
+                                        disabled={isUpdating || isMe || active}
+                                        onClick={() => handleSetRole(user, value)}
+                                        className={cn(
+                                          'h-6 px-2.5 text-[10px] font-medium uppercase tracking-widest rounded-[var(--radius-sm)] transition-colors duration-150 disabled:cursor-not-allowed',
+                                          active
+                                            ? 'bg-[var(--accent)] text-white'
+                                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] disabled:opacity-40'
+                                        )}
+                                      >
+                                        {isUpdating && active ? '…' : short}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
                               )}
                             </div>
                           </motion.div>

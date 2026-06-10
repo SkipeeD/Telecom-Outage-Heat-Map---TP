@@ -100,7 +100,7 @@ service cloud.firestore {
         (request.auth != null &&
          request.auth.uid == userId &&
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']))
-        || (isAdmin() && request.resource.data.role in ['user', 'engineer']);
+        || (isAdmin() && request.resource.data.role in ['user', 'engineer', 'technician']);
       allow delete: if false;
     }
   }
