@@ -28,7 +28,7 @@ const MapClient = dynamic(() => import('@/app/map/Map'), {
 
 
 function MapPageInner() {
-  const { user, loading: authLoading } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
   const { selectedSeverity, setCounts } = useFilters()
   const searchParams = useSearchParams()
   const focusAntennaId = searchParams.get('antennaId') ?? searchParams.get('selectSite')
@@ -79,16 +79,40 @@ function MapPageInner() {
 
   // Severity-filtered list for the map (when the user picks a severity in the
   // filter bar). Counts always reflect ALL antennas, never filtered.
+  // Antenna IDs tied to incidents assigned to me — engineers match on the
+  // owning `assignees`, technicians on the dispatched `technicians`. Drives the
+  // "Mine" map scope. Empty when the role has no ownership concept.
+  // Derived from `snapshot` (a stable reference) rather than the hook's
+  // openIncidents array (rebuilt every render) so the counts effect below
+  // doesn't loop.
+  const myAntennaIds = useMemo(() => {
+    const ids = new Set<string>()
+    if (!profile || (profile.role !== 'engineer' && profile.role !== 'technician')) return ids
+    for (const inc of Object.values(snapshot?.openIncidents ?? {})) {
+      const mine = profile.role === 'technician'
+        ? (inc.technicians ?? []).some(t => t.uid === profile.uid)
+        : (inc.assignees ?? []).some(a => a.uid === profile.uid)
+      if (!mine) continue
+      for (const id of (inc.antennaIds?.length ? inc.antennaIds : [inc.antennaId])) {
+        if (id) ids.add(id)
+      }
+    }
+    return ids
+  }, [snapshot, profile])
+
   const filteredAntennas = useMemo(() => {
     if (selectedSeverity === 'all') return antennas
+    if (selectedSeverity === 'mine') return antennas.filter(a => myAntennaIds.has(a.id))
+    if (selectedSeverity === 'active')
+      return antennas.filter(a => a.cells.some(c => c.status !== 'ok'))
     return antennas.filter(a => a.cells.some(c => c.status === selectedSeverity))
-  }, [antennas, selectedSeverity])
+  }, [antennas, selectedSeverity, myAntennaIds])
 
   // Counts driven by the snapshot. Absence in antennaSeverity = 'ok'.
   useEffect(() => {
     if (baseAntennas.length === 0) return
     const counts: Record<FilterSeverity, number> = {
-      all: baseAntennas.length, ok: 0, critical: 0, major: 0, minor: 0, warning: 0,
+      all: baseAntennas.length, active: 0, mine: myAntennaIds.size, ok: 0, critical: 0, major: 0, minor: 0, warning: 0,
     }
     const severityMap = snapshot?.antennaSeverity ?? {}
     let nonOk = 0
@@ -100,8 +124,9 @@ function MapPageInner() {
       }
     }
     counts.ok = baseAntennas.length - nonOk
+    counts.active = nonOk
     setCounts(counts)
-  }, [baseAntennas, snapshot, setCounts])
+  }, [baseAntennas, snapshot, myAntennaIds, setCounts])
 
   useEffect(() => {
     if (!user) return
@@ -177,9 +202,12 @@ function MapPageInner() {
   if (authLoading) return null
 
   const activeFilters = {
-    severities: selectedSeverity === 'all'
-      ? undefined
-      : [selectedSeverity as AlarmSeverity]
+    severities:
+      selectedSeverity === 'all' || selectedSeverity === 'mine'
+        ? undefined
+        : selectedSeverity === 'active'
+        ? (['critical', 'major', 'minor', 'warning'] as AlarmSeverity[])
+        : [selectedSeverity as AlarmSeverity]
   }
 
   return (

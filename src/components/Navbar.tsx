@@ -71,13 +71,12 @@ export function ThemeToggle() {
 }
 
 
-const BASE_NAV_TABS = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/map',       label: 'Map' },
-] as const
+const DASHBOARD_TAB = { href: '/dashboard', label: 'Dashboard' } as const
+const MAP_TAB       = { href: '/map',       label: 'Map' } as const
 
 const SEVERITY_FILTERS: { key: FilterSeverity; label: string; color: string }[] = [
   { key: 'all',      label: 'All',      color: 'var(--accent)' },
+  { key: 'active',   label: 'Active',   color: 'var(--accent)' },
   { key: 'critical', label: 'Critical', color: 'var(--alarm-critical)' },
   { key: 'major',    label: 'Major',    color: 'var(--alarm-major)' },
   { key: 'minor',    label: 'Minor',    color: 'var(--alarm-minor)' },
@@ -126,11 +125,22 @@ export default function Navbar() {
 
   const isMapPage = pathname === '/map' || pathname.startsWith('/map/')
 
+  // Dashboard is an engineer/admin ops view. Technicians get their field
+  // console; normal users only get the map.
   const navTabs = profile?.role === 'admin'
-    ? [...BASE_NAV_TABS, { href: '/admin', label: 'Admin' }]
+    ? [DASHBOARD_TAB, MAP_TAB, { href: '/admin', label: 'Admin' }]
     : profile?.role === 'engineer'
-    ? [...BASE_NAV_TABS, { href: '/engineer', label: 'Work' }]
-    : BASE_NAV_TABS
+    ? [DASHBOARD_TAB, MAP_TAB, { href: '/engineer', label: 'Work' }]
+    : profile?.role === 'technician'
+    ? [MAP_TAB, { href: '/technician', label: 'Field' }]
+    : [MAP_TAB]
+
+  // Only roles that own/execute work get the "Mine" scope pill — slotted right
+  // after "All" in the same single-select filter group.
+  const canScopeToMine = profile?.role === 'engineer' || profile?.role === 'technician'
+  const filters: typeof SEVERITY_FILTERS = canScopeToMine
+    ? [SEVERITY_FILTERS[0], { key: 'mine', label: 'Mine', color: 'var(--accent)' }, ...SEVERITY_FILTERS.slice(1)]
+    : SEVERITY_FILTERS
 
   return (
     <header className="
@@ -164,7 +174,7 @@ export default function Navbar() {
           transform: `translateX(${isMapPage ? 0 : centerOffset}px)`,
           transition: 'transform 360ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}
-        className="justify-self-center flex items-center gap-1.5 p-1
+        className="justify-self-center flex items-center gap-1 p-1
         bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-lg)]"
       >
         {/* Dashboard / Map toggle — always visible */}
@@ -176,7 +186,7 @@ export default function Navbar() {
               whileTap={{ scale: 0.96 }}
               onClick={() => router.push(href)}
               className={cn(
-                'relative px-3 py-1 rounded-[var(--radius-md)]',
+                'relative px-2 py-1 rounded-[var(--radius-md)]',
                 'text-[11px] font-medium uppercase tracking-widest transition-colors duration-150 border border-transparent overflow-hidden',
                 isActive
                   ? 'text-white'
@@ -204,10 +214,10 @@ export default function Navbar() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '4px',
             overflow: 'hidden',
             maxWidth: isMapPage ? '720px' : '0px',
-            marginLeft: isMapPage ? '0px' : '-6px',
+            marginLeft: isMapPage ? '0px' : '-4px',
             opacity: isMapPage ? 1 : 0,
             pointerEvents: isMapPage ? 'auto' : 'none',
             transition:
@@ -217,7 +227,7 @@ export default function Navbar() {
           }}
         >
           <div className="w-px h-4 shrink-0 bg-[var(--glass-border)] mx-0.5" />
-          {SEVERITY_FILTERS.map(({ key, label, color }) => {
+          {filters.map(({ key, label, color }) => {
             const isActive = selectedSeverity === key
             const count = counts[key]
             return (
@@ -226,7 +236,7 @@ export default function Navbar() {
                 onClick={() => setSelectedSeverity(key)}
                 tabIndex={isMapPage ? 0 : -1}
                 className={cn(
-                  'relative flex items-center gap-2 px-3 py-1 rounded-[var(--radius-md)] shrink-0',
+                  'relative flex items-center gap-1.5 px-2 py-1 rounded-[var(--radius-md)] shrink-0',
                   'text-[11px] font-medium uppercase tracking-widest transition-colors duration-150 border border-transparent overflow-hidden',
                   isActive
                     ? 'text-white'
