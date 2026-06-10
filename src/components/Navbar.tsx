@@ -71,10 +71,8 @@ export function ThemeToggle() {
 }
 
 
-const BASE_NAV_TABS = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/map',       label: 'Map' },
-] as const
+const DASHBOARD_TAB = { href: '/dashboard', label: 'Dashboard' } as const
+const MAP_TAB       = { href: '/map',       label: 'Map' } as const
 
 const SEVERITY_FILTERS: { key: FilterSeverity; label: string; color: string }[] = [
   { key: 'all',      label: 'All',      color: 'var(--accent)' },
@@ -127,11 +125,22 @@ export default function Navbar() {
 
   const isMapPage = pathname === '/map' || pathname.startsWith('/map/')
 
+  // Dashboard is an engineer/admin ops view. Technicians get their field
+  // console; normal users only get the map.
   const navTabs = profile?.role === 'admin'
-    ? [...BASE_NAV_TABS, { href: '/admin', label: 'Admin' }]
+    ? [DASHBOARD_TAB, MAP_TAB, { href: '/admin', label: 'Admin' }]
     : profile?.role === 'engineer'
-    ? [...BASE_NAV_TABS, { href: '/engineer', label: 'Work' }]
-    : BASE_NAV_TABS
+    ? [DASHBOARD_TAB, MAP_TAB, { href: '/engineer', label: 'Work' }]
+    : profile?.role === 'technician'
+    ? [MAP_TAB, { href: '/technician', label: 'Field' }]
+    : [MAP_TAB]
+
+  // Only roles that own/execute work get the "Mine" scope pill — slotted right
+  // after "All" in the same single-select filter group.
+  const canScopeToMine = profile?.role === 'engineer' || profile?.role === 'technician'
+  const filters: typeof SEVERITY_FILTERS = canScopeToMine
+    ? [SEVERITY_FILTERS[0], { key: 'mine', label: 'Mine', color: 'var(--accent)' }, ...SEVERITY_FILTERS.slice(1)]
+    : SEVERITY_FILTERS
 
   return (
     <header className="
@@ -218,7 +227,7 @@ export default function Navbar() {
           }}
         >
           <div className="w-px h-4 shrink-0 bg-[var(--glass-border)] mx-0.5" />
-          {SEVERITY_FILTERS.map(({ key, label, color }) => {
+          {filters.map(({ key, label, color }) => {
             const isActive = selectedSeverity === key
             const count = counts[key]
             return (

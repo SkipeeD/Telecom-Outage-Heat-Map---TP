@@ -58,6 +58,9 @@ export interface Incident {
   closedDate: string | null
   assignee: string
   assignees: IncidentAssignee[]
+  // Field technicians dispatched by an engineer to resolve the incident on-site.
+  // Distinct from `assignees` (the owning engineers). Defaults to empty.
+  technicians?: IncidentAssignee[]
   resolvedDate: string | null
   mergedInto?: string | null
 }
@@ -76,7 +79,7 @@ export interface UserProfile {
   uid: string
   email: string
   displayName?: string
-  role: 'user' | 'engineer' | 'admin'
+  role: 'user' | 'engineer' | 'technician' | 'admin'
   createdAt: string
 }
 

@@ -20,7 +20,10 @@ export default function VerifyEmailPage() {
         if (auth.currentUser?.emailVerified) {
           clearInterval(interval)
           document.cookie = `auth-session=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
-          router.push('/map')
+          // Full-document navigation so AuthProvider re-initialises with the now
+          // verified user. A client-side push would keep the stale (unverified)
+          // user object, which suppresses the name-entry dialog until a refresh.
+          window.location.assign('/map')
         }
       }, 3000)
 
@@ -28,7 +31,7 @@ export default function VerifyEmailPage() {
     })
 
     return () => unsubscribe()
-  }, [router])
+  }, [])
 
   return (
     <div className="flex min-h-svh items-center justify-center bg-[var(--bg-base)] p-6 transition-colors duration-300">

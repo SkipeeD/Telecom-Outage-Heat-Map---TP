@@ -98,6 +98,16 @@ export async function updateIncidentAssignees(
   })
 }
 
+export async function updateIncidentTechnicians(
+  incidentNumber: string,
+  technicians: IncidentAssignee[]
+): Promise<void> {
+  await apiFetch('/api/incidents/technicians', {
+    method: 'POST',
+    body: JSON.stringify({ incidentNumber, technicians }),
+  })
+}
+
 export async function createIncidentForAlarm(
   alarm: Alarm,
   primaryAntenna: Antenna,
@@ -166,7 +176,12 @@ export async function getEngineers(): Promise<UserProfile[]> {
   return data.engineers
 }
 
-export async function updateUserRole(uid: string, role: 'user' | 'engineer'): Promise<void> {
+export async function getTechnicians(): Promise<UserProfile[]> {
+  const data = await apiFetch<{ technicians: UserProfile[] }>('/api/technicians')
+  return data.technicians
+}
+
+export async function updateUserRole(uid: string, role: 'user' | 'engineer' | 'technician'): Promise<void> {
   await apiFetch('/api/set-role', {
     method: 'POST',
     body: JSON.stringify({ uid, role }),

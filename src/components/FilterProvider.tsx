@@ -3,7 +3,9 @@
 import React, { createContext, useContext, useState, useMemo } from 'react'
 import type { AlarmSeverity } from '@/types'
 
-export type FilterSeverity = AlarmSeverity | 'all' | 'active'
+// 'mine' scopes to sites tied to incidents assigned to the current user; it
+// lives in the same single-select group as the severity filters.
+export type FilterSeverity = AlarmSeverity | 'all' | 'active' | 'mine'
 
 interface FilterContextType {
   selectedSeverity: FilterSeverity
@@ -19,6 +21,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
   const [counts, setCounts] = useState<Record<FilterSeverity, number>>({
     all: 0,
     active: 0,
+    mine: 0,
     critical: 0,
     major: 0,
     minor: 0,

@@ -7,6 +7,7 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
 import { getAntennas } from '@/lib/firestore'
+import { canViewDashboard, homeRouteForRole } from '@/lib/roles'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
 import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
@@ -90,6 +91,15 @@ export default function DashboardPage() {
   const isEngineer = profile?.role === 'engineer'
   const { theme } = useTheme()
   const router = useRouter()
+
+  // The dashboard is an engineer/admin ops view. Technicians and normal users
+  // are redirected to their own home.
+  const dashboardAllowed = canViewDashboard(profile?.role)
+  useEffect(() => {
+    if (!authLoading && profile && !dashboardAllowed) {
+      router.replace(homeRouteForRole(profile.role))
+    }
+  }, [authLoading, profile, dashboardAllowed, router])
   const [antennas, setAntennas] = useState<Antenna[]>([])
   const [resolvedAlarms, setResolvedAlarms] = useState<Alarm[]>([])
   const [timeRange, setTimeRange] = useState<'30d' | '3m' | '6m' | '1y'>('30d')
@@ -277,7 +287,10 @@ export default function DashboardPage() {
     }
 
     antennas.forEach(a => {
-      const status: AlarmSeverity = severityMap[a.id] ?? (getWorstStatus(a) === 'ok' ? 'ok' : getWorstStatus(a))
+      // Live snapshot is the source of truth — absence from antennaSeverity means
+      // ok. (Do NOT fall back to the static topology cells; that double-counts
+      // stale seed alarms and inflated this number well above the real count.)
+      const status: AlarmSeverity = severityMap[a.id] ?? 'ok'
       severityCount[status]++
       if (status === 'ok') ok++
       else alarms++
@@ -450,6 +463,7 @@ export default function DashboardPage() {
   }
 
   if (authLoading) return null
+  if (profile && !dashboardAllowed) return null
 
   return (
     <div className="min-h-full bg-[var(--bg-base)] p-6 md:p-8 transition-colors duration-300">
