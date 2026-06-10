@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import type { Incident, IncidentAssignee } from '@/types';
 
 const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
@@ -40,30 +41,90 @@ export async function sendEmail({
   }
 }
 
-export async function sendAssignmentNotification({
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function contactLabel(contact: IncidentAssignee): string {
+  return contact.displayName ? `${contact.displayName} <${contact.email}>` : contact.email;
+}
+
+function formatContactList(contacts: IncidentAssignee[], empty: string): string {
+  if (contacts.length === 0) return empty;
+  return contacts.map(contactLabel).join(', ');
+}
+
+function formatIncidentLocation(incident: Incident): string[] {
+  const sites = incident.siteIds?.length ? incident.siteIds : (incident.siteId ? [incident.siteId] : []);
+  const antennas = incident.antennaIds?.length ? incident.antennaIds : (incident.antennaId ? [incident.antennaId] : []);
+  const technologies = incident.technologies?.length ? incident.technologies : (incident.technology ? [incident.technology] : []);
+
+  return [
+    sites.length > 0 ? `Site${sites.length > 1 ? 's' : ''}: ${sites.join(', ')}` : 'Site: Unknown',
+    antennas.length > 0 ? `Antenna${antennas.length > 1 ? 's' : ''}: ${antennas.join(', ')}` : 'Antenna: Unknown',
+    technologies.length > 0 ? `Technology: ${technologies.join(', ')}` : null,
+  ].filter((line): line is string => line !== null);
+}
+
+function detailsHtml(rows: Array<[string, string | string[]]>): string {
+  return rows.map(([label, value]) => {
+    const body = Array.isArray(value)
+      ? value.map(line => escapeHtml(line)).join('<br />')
+      : escapeHtml(value);
+
+    return `
+      <tr>
+        <td style="padding: 8px 12px; width: 140px; color: #555; font-weight: 700; vertical-align: top;">${escapeHtml(label)}</td>
+        <td style="padding: 8px 12px; color: #222; vertical-align: top;">${body}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+export async function sendEngineerAssignmentNotification({
   engineerEmail,
-  incidentNumber,
-  location,
-  urgency,
+  engineerName,
+  incident,
+  technicians = [],
 }: {
   engineerEmail: string;
-  incidentNumber: string;
-  location: string;
-  urgency: string;
+  engineerName?: string;
+  incident: Incident;
+  technicians?: IncidentAssignee[];
 }) {
-  const subject = `[ASSIGNED] Incident #${incidentNumber} - Action Required`;
-  const text = `Hello,\n\nYou have been assigned to Incident #${incidentNumber}.\n\nLocation: ${location}\nUrgency: ${urgency}\n\nPlease check the dashboard for more details.`;
-  
+  const location = formatIncidentLocation(incident);
+  const fieldTeam = formatContactList(technicians, 'No field technicians dispatched yet');
+  const greeting = engineerName ? `Hello ${engineerName},` : 'Hello,';
+  const subject = `[${incident.urgency}] Incident #${incident.incidentNumber} assigned to you`;
+  const text = `${greeting}
+
+You are the owning engineer for Incident #${incident.incidentNumber}.
+
+Urgency: ${incident.urgency}
+Location:
+${location.map(line => `- ${line}`).join('\n')}
+Field technicians: ${fieldTeam}
+
+Please check the Telecom Heatmap dashboard for full details and acknowledge the assignment.`;
+
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 5px;">
-      <h2 style="color: #333;">New Incident Assignment</h2>
-      <p>Hello,</p>
-      <p>You have been assigned to a new incident.</p>
-      <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
-        <p><strong>Incident ID:</strong> #${incidentNumber}</p>
-        <p><strong>Location:</strong> ${location}</p>
-        <p><strong>Urgency:</strong> ${urgency}</p>
-      </div>
+      <h2 style="color: #333; margin: 0 0 12px;">Incident Assigned</h2>
+      <p>${escapeHtml(greeting)}</p>
+      <p>You are the owning engineer for this incident.</p>
+      <table style="width: 100%; border-collapse: collapse; background-color: #f9f9f9; border-radius: 5px; margin: 20px 0;">
+        ${detailsHtml([
+          ['Incident', `#${incident.incidentNumber}`],
+          ['Urgency', incident.urgency],
+          ['Location', location],
+          ['Field team', fieldTeam],
+        ])}
+      </table>
       <p>Please log in to the Telecom Heatmap dashboard to view the full details and acknowledge the assignment.</p>
       <hr style="border: 0; border-top: 1px solid #eaeaea; margin: 20px 0;" />
       <p style="font-size: 12px; color: #666;">This is an automated notification from the Telecom Outage Heat Map system.</p>
@@ -72,6 +133,64 @@ export async function sendAssignmentNotification({
 
   return sendEmail({
     to: engineerEmail,
+    subject,
+    text,
+    html,
+  });
+}
+
+export async function sendTechnicianAssignmentNotification({
+  technicianEmail,
+  technicianName,
+  incident,
+  assignedEngineer,
+  technicians = [],
+}: {
+  technicianEmail: string;
+  technicianName?: string;
+  incident: Incident;
+  assignedEngineer?: IncidentAssignee | null;
+  technicians?: IncidentAssignee[];
+}) {
+  const location = formatIncidentLocation(incident);
+  const engineer = assignedEngineer ? contactLabel(assignedEngineer) : 'No owning engineer assigned yet';
+  const fieldTeam = formatContactList(technicians, 'You are currently the only technician dispatched');
+  const greeting = technicianName ? `Hello ${technicianName},` : 'Hello,';
+  const subject = `[${incident.urgency}] Dispatch to Incident #${incident.incidentNumber}`;
+  const text = `${greeting}
+
+You have been dispatched to Incident #${incident.incidentNumber}.
+
+Urgency: ${incident.urgency}
+Location:
+${location.map(line => `- ${line}`).join('\n')}
+Owning engineer: ${engineer}
+Technicians on this dispatch: ${fieldTeam}
+
+Please coordinate with the owning engineer and check the Telecom Heatmap technician view for full details.`;
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 5px;">
+      <h2 style="color: #333; margin: 0 0 12px;">Technician Dispatch</h2>
+      <p>${escapeHtml(greeting)}</p>
+      <p>You have been dispatched to this incident.</p>
+      <table style="width: 100%; border-collapse: collapse; background-color: #f9f9f9; border-radius: 5px; margin: 20px 0;">
+        ${detailsHtml([
+          ['Incident', `#${incident.incidentNumber}`],
+          ['Urgency', incident.urgency],
+          ['Location', location],
+          ['Owning engineer', engineer],
+          ['Field team', fieldTeam],
+        ])}
+      </table>
+      <p>Please coordinate with the owning engineer and check the Telecom Heatmap technician view for full details.</p>
+      <hr style="border: 0; border-top: 1px solid #eaeaea; margin: 20px 0;" />
+      <p style="font-size: 12px; color: #666;">This is an automated notification from the Telecom Outage Heat Map system.</p>
+    </div>
+  `;
+
+  return sendEmail({
+    to: technicianEmail,
     subject,
     text,
     html,
