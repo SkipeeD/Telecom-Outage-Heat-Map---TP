@@ -11,7 +11,7 @@ import { canViewDashboard, homeRouteForRole } from '@/lib/roles'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
 import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
-import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary } from '@/types'
+import type { Antenna, AlarmSeverity, Technology, Alarm, DashboardSummary, Incident } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import {
@@ -235,7 +235,7 @@ export default function DashboardPage() {
   const fetchHistoricalIncidents = useCallback(async () => {
     if (!user) return
     try {
-      const collected: import('@/types').Incident[] = []
+      const collected: Incident[] = []
       let cursor: string | undefined
       do {
         const page = await getIncidentHistory({ cursor, limit: 50 })
