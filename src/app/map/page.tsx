@@ -27,10 +27,25 @@ const MapClient = dynamic(() => import('@/app/map/Map'), {
 })
 
 
+/**
+ * Inner component for the Map page. Wrapped in Suspense by the outer shell
+ * because it calls `useSearchParams()`.
+ *
+ * Data strategy:
+ * - Antenna topology (lat/lng, cells) is fetched once on mount — positions are static.
+ * - Live severity per antenna is overlaid from `useLiveSnapshot`, replacing each
+ *   cell's status value so the map pins reflect real-time alarm state.
+ * - Clicking a pin shows a lightweight popup immediately, then upgrades it with
+ *   the full per-cell breakdown fetched from `/api/antennas/[id]`.
+ * - Weather risk flags refresh every 30 minutes and tint the map tiles.
+ * - `myAntennaIds` powers the "Mine" filter: it tracks antennas belonging to
+ *   incidents the current user owns (engineer = assignee, technician = dispatched).
+ */
 function MapPageInner() {
   const { user, profile, loading: authLoading } = useAuth()
   const { selectedSeverity, setCounts } = useFilters()
   const searchParams = useSearchParams()
+  // Accept both param names for backwards-compat deep links from different senders
   const focusAntennaId = searchParams.get('antennaId') ?? searchParams.get('selectSite')
   // Topology positions are fetched ONCE per session — antenna locations don't
   // change at runtime. Live severity comes from meta/liveSnapshot.
@@ -150,6 +165,11 @@ function MapPageInner() {
     return () => { cancelled = true; clearInterval(id) }
   }, [user])
 
+  /**
+   * Handles a map pin click. Toggles selection (clicking the same pin again
+   * closes the popup). Shows the antenna data from the topology cache immediately
+   * for snappy UX, then upgrades with per-cell detail from the API.
+   */
   const handleAntennaClick = (antenna: Antenna, anchorEl: Element) => {
     const isDeselecting = selectedId === antenna.id
     setSelectedId(isDeselecting ? null : antenna.id)
@@ -252,6 +272,10 @@ function MapPageInner() {
   )
 }
 
+/**
+ * Map page shell. Wraps `MapPageInner` in Suspense to satisfy `useSearchParams`
+ * requirements in the Next.js App Router.
+ */
 export default function MapPage() {
   return (
     <Suspense>

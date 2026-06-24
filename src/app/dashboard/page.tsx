@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area
 } from 'recharts'
-import { getAntennas } from '@/lib/firestore'
+import { getAntennas, getIncidentHistory } from '@/lib/firestore'
 import { canViewDashboard, homeRouteForRole } from '@/lib/roles'
 import { useAuth } from '@/components/AuthProvider'
 import { useTheme } from '@/hooks/useTheme'
@@ -71,6 +71,7 @@ const itemVariants = {
   }
 }
 
+/** Reads a CSS custom-property value at runtime (needed for Recharts which doesn't understand var()). */
 function getCSSVar(name: string) {
   if (typeof window === 'undefined') return ''
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -84,13 +85,28 @@ const severityRank: Record<AlarmSeverity, number> = {
   ok: 1,
 }
 
+/** Returns the worst (highest-severity) cell status for an antenna, used in the weather city popup. */
 function getWorstStatus(antenna: Antenna): AlarmSeverity {
   if (!antenna.cells || antenna.cells.length === 0) return 'ok'
-  return antenna.cells.reduce((prev, curr) => 
+  return antenna.cells.reduce((prev, curr) =>
     severityRank[curr.status] > severityRank[prev.status] ? curr : prev
   ).status
 }
 
+/**
+ * NOC Dashboard page (admin + engineer only).
+ *
+ * Data strategy:
+ * - Live alarm/incident state comes from `useLiveSnapshot` (Firestore listener)
+ *   — replaces the old 30 s / 10 s polling loops.
+ * - Static antenna topology is fetched once on mount; positions never change at runtime.
+ * - Historical incident data is fetched from the cached `/api/dashboard/summary`
+ *   endpoint every 5 minutes and merged with live data for chart series.
+ * - Weather details refresh every 30 minutes; AI predictions refresh every 60 minutes.
+ *
+ * Admin-only sections: Resolution Performance chart, Engineer Utilization chart, CSV export.
+ * Engineer-only section: My Active Assignments panel.
+ */
 export default function DashboardPage() {
   const { user, profile, loading: authLoading } = useAuth()
   const isAdmin = profile?.role === 'admin'
@@ -116,15 +132,51 @@ export default function DashboardPage() {
   const antennaSeverity = snapshot?.antennaSeverity
   const activeAlarms = useMemo(() => snapshot?.activeAlarms ?? [], [snapshot])
 
-  // Chart data needs historical resolved incidents too — comes from the
-  // 5-min-cached dashboard summary endpoint.
+  // Chart data needs historical resolved incidents too — comes from the history endpoint.
   const [historicalIncidents, setHistoricalIncidents] = useState<DashboardSummary['incidents']>([])
+
+  // Bridge buffer: holds incidents that just left openIncidents while the history
+  // fetch is in-flight. Without this the chart dips (incident disappears from both
+  // lists simultaneously) before it reappears as RESOLVED in historicalIncidents.
+  const [bridgeIncidents, setBridgeIncidents] = useState<Map<string, Incident>>(new Map())
+  const prevOpenMapRef = useRef(new Map<string, Incident>())
+
+  // When openIncidents shrinks, save the departed incidents into the bridge.
+  useEffect(() => {
+    const prevMap = prevOpenMapRef.current
+    const currMap = new Map(openIncidents.map(i => [i.incidentNumber, i]))
+    const departed: [string, Incident][] = []
+    for (const [num, inc] of prevMap) {
+      if (!currMap.has(num)) departed.push([num, inc])
+    }
+    prevOpenMapRef.current = currMap
+    if (departed.length > 0) {
+      setBridgeIncidents(prev => {
+        const next = new Map(prev)
+        for (const [num, inc] of departed) next.set(num, inc)
+        return next
+      })
+    }
+  }, [openIncidents])
+
+  // Once historicalIncidents absorbs a bridged incident, remove it from the bridge.
+  useEffect(() => {
+    setBridgeIncidents(prev => {
+      if (prev.size === 0) return prev
+      const histSet = new Set(historicalIncidents.map(i => i.incidentNumber))
+      const next = new Map([...prev].filter(([num]) => !histSet.has(num)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [historicalIncidents])
+
   const incidents = useMemo(() => {
     const merged = new Map<string, DashboardSummary['incidents'][number]>()
     for (const i of historicalIncidents) merged.set(i.incidentNumber, i)
-    for (const i of openIncidents)       merged.set(i.incidentNumber, i)
+    // Bridge fills the gap so the chart never loses an incident mid-transition
+    for (const [num, i] of bridgeIncidents) if (!merged.has(num)) merged.set(num, i)
+    for (const i of openIncidents) merged.set(i.incidentNumber, i)
     return Array.from(merged.values())
-  }, [historicalIncidents, openIncidents])
+  }, [historicalIncidents, bridgeIncidents, openIncidents])
   
   const [weatherDetails, setWeatherDetails] = useState<CityWeatherDetail[]>([])
   const [selectedCity, setSelectedCity] = useState<CityWeatherDetail | null>(null)
@@ -140,6 +192,8 @@ export default function DashboardPage() {
     aiPredictionRef.current = aiPrediction
   }, [aiPrediction])
 
+  // Auto-scroll the weather cards strip: scrolls left 1 px every 30 ms and
+  // resets to 0 when it reaches the midpoint of the doubled list (infinite loop).
   useEffect(() => {
     if (!isAutoScrolling || !scrollRef.current) return
 
@@ -174,38 +228,70 @@ export default function DashboardPage() {
     return () => { cancelled = true }
   }, [user])
 
-  useEffect(() => {
+  // Fetches historical (resolved/closed) incidents directly from the history
+  // endpoint, which clears its own cache immediately after a lifecycle write.
+  // This is the same data source the admin panel uses, so the chart updates
+  // as soon as an incident is resolved.
+  const fetchHistoricalIncidents = useCallback(async () => {
     if (!user) return
-    let cancelled = false
-
-    const fetchDashboardSummary = async () => {
-      try {
-        const idToken = await user.getIdToken()
-        const res = await fetch('/api/dashboard/summary', {
-          headers: {
-            Authorization: `Bearer ${idToken}`,
-          },
-        })
-        if (!res.ok || cancelled) return
-
-        const summary = await res.json() as DashboardSummary
-        if (cancelled) return
-
-        setResolvedAlarms(summary.resolvedAlarms)
-        setHistoricalIncidents(summary.incidents)
-      } catch {
-        // dashboard history is non-critical; live topology stays active
-      }
-    }
-
-    void fetchDashboardSummary()
-    const id = window.setInterval(() => void fetchDashboardSummary(), 5 * 60 * 1000)
-    return () => {
-      cancelled = true
-      window.clearInterval(id)
+    try {
+      const collected: import('@/types').Incident[] = []
+      let cursor: string | undefined
+      do {
+        const page = await getIncidentHistory({ cursor, limit: 50 })
+        collected.push(...page.incidents)
+        cursor = page.nextCursor ?? undefined
+        if (collected.length >= 500) break
+      } while (cursor)
+      setHistoricalIncidents(collected)
+    } catch {
+      // non-critical — chart falls back to open-incidents-only data
     }
   }, [user])
 
+  // Fetch resolved alarms for the CSV export (5-min cached, freshness not critical).
+  const fetchResolvedAlarms = useCallback(async () => {
+    if (!user) return
+    try {
+      const idToken = await user.getIdToken()
+      const res = await fetch('/api/dashboard/summary', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      if (!res.ok) return
+      const summary = await res.json() as DashboardSummary
+      setResolvedAlarms(summary.resolvedAlarms)
+    } catch {}
+  }, [user])
+
+  useEffect(() => {
+    void fetchHistoricalIncidents()
+    // Re-poll every 60 s as a fallback; the primary refresh is event-driven below.
+    const id = window.setInterval(() => void fetchHistoricalIncidents(), 60 * 1000)
+    return () => window.clearInterval(id)
+  }, [fetchHistoricalIncidents])
+
+  useEffect(() => {
+    void fetchResolvedAlarms()
+    const id = window.setInterval(() => void fetchResolvedAlarms(), 5 * 60 * 1000)
+    return () => window.clearInterval(id)
+  }, [fetchResolvedAlarms])
+
+  // When an incident is resolved it disappears from openIncidents immediately.
+  // Re-fetch historical data right away so the chart reflects the change.
+  const prevOpenCountRef = useRef(openIncidents.length)
+  useEffect(() => {
+    const prev = prevOpenCountRef.current
+    prevOpenCountRef.current = openIncidents.length
+    if (openIncidents.length < prev) {
+      void fetchHistoricalIncidents()
+    }
+  }, [openIncidents.length, fetchHistoricalIncidents])
+
+  /**
+   * Calls the `/api/weather/predict` endpoint (Gemini) with the current weather
+   * details to generate an AI-driven outage risk outlook. Uses a ref guard to
+   * prevent concurrent requests.
+   */
   const fetchAiPrediction = useCallback(async (details: CityWeatherDetail[]) => {
     if (details.length === 0 || loadingAiRef.current) return
     loadingAiRef.current = true
@@ -392,11 +478,16 @@ export default function DashboardPage() {
           }
           dailyStats[resLabel].resolved++
           
-          // Only calculate MTTR if we have a valid submission date to compare against
+          // Only include MTTR for incidents within a 7-day ceiling.
+          // Outliers (test data, stale incidents) would otherwise spike the average
+          // to 1000h+ and make the Y-axis unreadable.
           if (i.submitDate) {
             const mttrMs = resTs - submitTs
-            dailyStats[resLabel].mttrSumMs += mttrMs
-            dailyStats[resLabel].resolvedCount++
+            const MTTR_OUTLIER_MS = 7 * 24 * 3600_000 // 7 days
+            if (mttrMs > 0 && mttrMs <= MTTR_OUTLIER_MS) {
+              dailyStats[resLabel].mttrSumMs += mttrMs
+              dailyStats[resLabel].resolvedCount++
+            }
           }
         }
       }
@@ -451,6 +542,7 @@ export default function DashboardPage() {
     })
   }, [incidents, profile])
 
+  /** Exports the resolved alarms list as a CSV file download. */
   const exportResolvedToExcel = () => {
     if (resolvedAlarms.length === 0) return
     const headers = ['Site ID', 'Technology', 'Severity', 'Alarm Text', 'Triggered At', 'Resolved At']
@@ -790,10 +882,11 @@ export default function DashboardPage() {
                       tickLine={false}
                       tick={{ fill: getCSSVar('--text-muted'), fontSize: 9, fontFamily: 'var(--font-mono)' }}
                     />
-                    {/* Secondary Y-Axis for MTTR (Hours) */}
-                    <YAxis 
-                      yAxisId="right" 
-                      orientation="right" 
+                    {/* Secondary Y-Axis for MTTR (Hours) — capped at 72h so outliers don't blow the scale */}
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      domain={[0, 72]}
                       axisLine={false}
                       tickLine={false}
                       tick={{ fill: 'var(--accent)', fontSize: 9, fontFamily: 'var(--font-mono)' }}

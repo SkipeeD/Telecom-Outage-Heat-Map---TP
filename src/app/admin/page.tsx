@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Users, ShieldCheck, RefreshCw } from 'lucide-react'
 import { IncidentsPanel } from '@/components/admin/IncidentsPanel'
 
+/** Active tab in the Admin Panel. */
 type AdminTab = 'users' | 'incidents'
 
 const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
@@ -40,13 +41,31 @@ const ASSIGNABLE_ROLES: { value: 'user' | 'engineer' | 'technician'; short: stri
   { value: 'technician', short: 'Tech' },
 ]
 
+/**
+ * Admin Panel page (admin-only).
+ *
+ * Two tabs:
+ * - Users  — lists all registered users with role badges and an inline role
+ *   switcher. Admin roles must be set directly in Firebase; only engineer /
+ *   technician / user can be changed here.
+ * - Incidents — renders IncidentsPanel with full incident management.
+ *
+ * Deep-link support: navigating to `/admin?incident=INC-123` automatically
+ * switches to the Incidents tab and highlights that incident. The URL is
+ * cleaned up immediately via `router.replace` so a back-navigation doesn't
+ * re-highlight the same incident.
+ *
+ * Access guard: non-admin users are redirected to `/dashboard`.
+ */
 export default function AdminPage() {
   const { profile, loading: authLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  // Read tab and incident from the URL so deep-links work (e.g. from notifications)
   const tabFromUrl = searchParams.get('tab')
   const incidentFromUrl = searchParams.get('incident')
+  // Initialise tab state from the URL to avoid a flash on first render
   const [activeTab, setActiveTab] = useState<AdminTab>(() => tabFromUrl === 'incidents' ? 'incidents' : 'users')
   const [highlightIncident, setHighlightIncident] = useState<string | undefined>(() => incidentFromUrl ?? undefined)
   const [users, setUsers] = useState<UserProfile[]>([])
@@ -54,6 +73,7 @@ export default function AdminPage() {
   const [updating, setUpdating] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Redirect non-admins away as soon as auth resolves
   useEffect(() => {
     if (authLoading) return
     if (!canManageUsers(profile?.role)) {
@@ -61,6 +81,8 @@ export default function AdminPage() {
     }
   }, [authLoading, profile, router])
 
+  // Sync tab + highlight state from URL params. Deferred via queueMicrotask so
+  // we don't trigger a state update synchronously inside the effect body.
   useEffect(() => {
     let cancelled = false
     queueMicrotask(() => {
@@ -85,6 +107,7 @@ export default function AdminPage() {
     }
   }, [incidentFromUrl, router, tabFromUrl])
 
+  // Incrementing this key re-triggers the user-fetch effect, acting as a manual refresh
   const [usersRefreshKey, setUsersRefreshKey] = useState(0)
 
   const loadUsers = useCallback(() => setUsersRefreshKey(k => k + 1), [])
@@ -106,7 +129,9 @@ export default function AdminPage() {
     }
   }, [authLoading, profile, usersRefreshKey])
 
+  /** Optimistically updates the local user list while the Firestore write is in-flight. */
   async function handleSetRole(user: UserProfile, nextRole: 'user' | 'engineer' | 'technician') {
+    // Guard: admins can only be demoted directly in Firebase; skip no-ops
     if (user.role === 'admin' || user.role === nextRole) return
     setUpdating(user.uid)
     try {
@@ -119,6 +144,7 @@ export default function AdminPage() {
     }
   }
 
+  /** Switches the active tab and keeps the URL in sync without a full navigation. */
   function handleTabClick(tab: AdminTab) {
     setActiveTab(tab)
     setHighlightIncident(undefined)

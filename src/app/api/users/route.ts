@@ -4,6 +4,11 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const AUTH_LOOKUP_CHUNK_SIZE = 100
 
+/**
+ * Safely maps a raw Firestore document to a UserProfile, falling back to safe
+ * defaults for missing or invalid fields. The doc's `id` is used as the uid
+ * fallback for legacy documents that predate the uid field.
+ */
 function toUserProfile(id: string, data: FirebaseFirestore.DocumentData): UserProfile {
   return {
     uid: typeof data.uid === 'string' ? data.uid : id,
@@ -17,6 +22,19 @@ function toUserProfile(id: string, data: FirebaseFirestore.DocumentData): UserPr
   }
 }
 
+/**
+ * GET /api/users
+ *
+ * Returns all Firestore user profiles enriched with live display names and
+ * emails from Firebase Auth. Only admins may call this endpoint.
+ *
+ * Auth records are fetched in chunks of AUTH_LOOKUP_CHUNK_SIZE (100) to stay
+ * within the Firebase Admin `getUsers` batch limit. Profiles whose uid no
+ * longer exists in Auth are filtered out, preventing stale ghost accounts
+ * from appearing in the admin user management table.
+ *
+ * Returns: { users: UserProfile[] }
+ */
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get('Authorization')
@@ -47,6 +65,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // Drop profiles whose uid is absent from Auth — they're orphaned Firestore docs.
     const users = profiles
       .filter(user => existingAuthUsers.has(user.uid))
       .map(user => {

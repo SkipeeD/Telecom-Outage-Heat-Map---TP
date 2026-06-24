@@ -28,6 +28,19 @@ const fetchAntenna = unstable_cache(
   { revalidate: ANTENNA_CACHE_TTL_S },
 )
 
+/**
+ * GET /api/antennas/[id]
+ *
+ * Returns a single antenna document from the `topology` collection.
+ * Used by the map popup / details panel for the per-cell drill-down view.
+ * The map pin colors themselves come from meta/liveSnapshot — this route
+ * is only called when a user explicitly opens an antenna's detail panel.
+ *
+ * Path param:
+ *   - id: Firestore topology doc id
+ *
+ * Returns: { antenna: Antenna } or 404 if the doc does not exist.
+ */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

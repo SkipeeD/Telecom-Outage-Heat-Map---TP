@@ -8,6 +8,16 @@ import { auth } from '@/lib/firebase'
 import { SignalHigh, MailCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+/**
+ * Email-verification holding page. Shown right after registration while the
+ * user's inbox is still unverified.
+ *
+ * Polls Firebase Auth every 3 seconds by calling `user.reload()` and checking
+ * `emailVerified`. On success it sets an `auth-session` cookie (consumed by
+ * the middleware) and does a hard navigation to `/map` so AuthProvider
+ * re-initialises from scratch with the verified user object — a client-side
+ * router push would carry the stale unverified state.
+ */
 export default function VerifyEmailPage() {
   const router = useRouter()
 
@@ -16,6 +26,7 @@ export default function VerifyEmailPage() {
       if (!user) return
 
       const interval = setInterval(async () => {
+        // Force-reload the Firebase user to pick up the latest emailVerified flag
         await user.reload()
         if (auth.currentUser?.emailVerified) {
           clearInterval(interval)

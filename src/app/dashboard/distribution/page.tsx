@@ -27,7 +27,8 @@ const severityRank: Record<AlarmSeverity, number> = {
 const FILTERS: (AlarmSeverity | 'ALL')[] = ['ALL', 'critical', 'major', 'minor', 'warning']
 const TECH_FILTERS: (Technology | 'ALL')[] = ['ALL', ...TECHS]
 
-const normalize = (str: string) => 
+/** Strips diacritics and lowercases a string for accent-insensitive search. */
+const normalize = (str: string) =>
   str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
 
 interface AlarmDisplayItem extends Alarm {
@@ -38,11 +39,24 @@ interface AlarmDisplayItem extends Alarm {
   incident?: Incident
 }
 
+/**
+ * Inner content component for the Distribution Detail page. Wrapped in Suspense
+ * by the outer page shell because it calls `useSearchParams()`.
+ *
+ * Supports two modes driven by URL params:
+ * - `?mode=severity` (default) — filters live alarms by severity level.
+ * - `?mode=technology&tech=4G` — filters live alarms by radio technology.
+ *
+ * Alarm data comes from `useLiveSnapshot`; antenna geo metadata is fetched once
+ * for name resolution and map-link construction.
+ */
 function DistributionContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { user } = useAuth()
-  
+
+  // Seed filters from URL query params so navigating from the dashboard pie/bar
+  // chart opens this page with the correct filter already applied.
   const initialSeverity = (searchParams.get('severity') as AlarmSeverity | null) || 'ALL'
   const initialTech = (searchParams.get('tech') as Technology | null) || 'ALL'
   const mode = (searchParams.get('mode') as 'severity' | 'technology') || (searchParams.get('tech') ? 'technology' : 'severity')
@@ -353,6 +367,10 @@ function DistributionContent() {
   )
 }
 
+/**
+ * Distribution Detail page shell. Handles the auth-loading gate and wraps
+ * `DistributionContent` in `Suspense` (required by `useSearchParams`).
+ */
 export default function DistributionDetailPage() {
   const { loading: authLoading } = useAuth()
 

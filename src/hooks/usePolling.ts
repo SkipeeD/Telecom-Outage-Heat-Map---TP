@@ -3,6 +3,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { apiFetch } from '@/lib/api-client'
 
+/**
+ * Generic data-fetching hook that polls a JSON API endpoint on a fixed interval.
+ *
+ * @param url        - Absolute or relative URL to fetch (GET).
+ * @param intervalMs - How often to re-fetch, in milliseconds.
+ * @param enabled    - Set to `false` to skip fetching (e.g. while auth is pending).
+ * @returns `data` (typed `T`), `loading` flag, and an imperative `refresh` callback.
+ *
+ * Errors are swallowed silently and retried on the next interval tick.
+ * The initial fetch is deferred via `queueMicrotask` to avoid a synchronous
+ * state update in the effect body.
+ */
 export function usePolling<T>(
   url: string,
   intervalMs: number,

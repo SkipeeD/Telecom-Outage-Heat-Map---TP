@@ -28,6 +28,13 @@ function relTime(iso: string): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
+/**
+ * Navbar notification bell icon with unread count badge.
+ * Opens a dropdown panel listing recent notifications and provides controls
+ * for marking all as read and toggling notification sounds.
+ * Clicking a notification navigates the user to the relevant incident page for their role.
+ * Only rendered for admin, engineer, and technician roles.
+ */
 export function NotificationBell() {
   const { profile } = useAuth()
   const role = profile?.role
@@ -51,6 +58,7 @@ export function NotificationBell() {
   // Only render for admin and engineer roles
   if (role !== 'admin' && role !== 'engineer' && role !== 'technician') return null
 
+  // Route to the role-appropriate incident view and dismiss the notification
   function handleNotifClick(n: AppNotification) {
     dismiss(n.id)
     setOpen(false)
@@ -67,6 +75,7 @@ export function NotificationBell() {
     <div className="relative z-[10001]" ref={containerRef}>
       <motion.button
         whileTap={{ scale: 0.93 }}
+        // Mark all read when the panel opens so the badge clears on first view
         onClick={() => { setOpen(v => !v); if (!open && unreadCount > 0) markAllRead() }}
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
         className={cn(

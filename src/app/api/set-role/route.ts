@@ -1,6 +1,20 @@
 import { getAdminAuth, getAdminDb } from '@/lib/firebase-admin'
 import { NextRequest, NextResponse } from 'next/server'
 
+/**
+ * POST /api/set-role
+ *
+ * Assigns a custom role claim to a Firebase Auth user and syncs the role to
+ * the user's Firestore profile document. Only admins may call this endpoint.
+ * Valid roles: "user" | "engineer" | "technician".
+ *
+ * If the Auth claim update succeeds but the Firestore sync fails, a 200 is
+ * still returned with a `warning` field so the admin knows the Firestore
+ * profile is stale (the Auth claim — which is the source of truth — was set).
+ *
+ * Body: { uid: string; role: "user" | "engineer" | "technician" }
+ * Returns: { success: true } or { success: true, warning: string }
+ */
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('Authorization')

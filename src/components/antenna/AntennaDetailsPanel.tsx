@@ -19,7 +19,8 @@ import { canAssignEngineers, canCreateIncident } from '@/lib/roles'
 import { AssignEngineersModal } from '@/components/admin/AssignEngineersModal'
 import { MapPin } from 'lucide-react'
 
-// Evaluated once at module load — safe to use in render (avoids react-hooks/purity violation)
+// Evaluated once at module load — safe to use in render (avoids react-hooks/purity violation).
+// Used to compute "past 7-day alarm count" relative to the time the page loaded.
 const MODULE_NOW_MS = Date.now()
 
 const SPRING: { type: 'spring'; stiffness: number; damping: number } = {
@@ -56,6 +57,18 @@ type Tab = 'overview' | 'alarms' | 'incidents'
 type SevFilter = 'ALL' | AlarmSeverity
 type IncFilter = 'ALL' | 'MINE' | 'IN PROGRESS' | 'ASSIGNED' | 'RESOLVED' | 'CLOSED'
 
+/**
+ * Full-page slide-in panel for a selected antenna.
+ * Shows three tabs — Overview, Alarms, and Incidents — and allows role-gated
+ * actions: acknowledging assigned incidents and raising new incidents from
+ * the active alarm on the selected technology cell.
+ *
+ * @param antenna - The antenna to display.
+ * @param allAntennas - Full list passed to incident creation for site grouping.
+ * @param initialTech - The technology tab to pre-select on open (usually the worst cell).
+ * @param open - Drives AnimatePresence; closing triggers the slide-out animation.
+ * @param onClose - Called when the panel should be dismissed.
+ */
 export function AntennaDetailsPanel({ antenna, allAntennas, initialTech, open, onClose }: Props) {
   const shouldReduce = useReducedMotion()
   const { profile } = useAuth()
@@ -74,6 +87,7 @@ export function AntennaDetailsPanel({ antenna, allAntennas, initialTech, open, o
   const [creatingIncident, setCreatingIncident] = useState(false)
   const [incidentCreated, setIncidentCreated]   = useState<string | null>(null)
 
+  // Reset all tab/filter state when the panel opens for a new antenna or technology
   useEffect(() => {
     if (!open) return
     void (async () => {
@@ -530,6 +544,7 @@ function PanelAlarmCard({ alarm, resolved = false }: PanelAlarmCardProps) {
   )
 }
 
+/** Converts a duration in milliseconds to a human-readable string (e.g. "2h 15m"). */
 function formatDuration(ms: number): string {
   const minutes = Math.floor(ms / 60000)
   if (minutes < 60) return `${minutes}m`

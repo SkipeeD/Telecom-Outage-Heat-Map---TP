@@ -9,6 +9,21 @@ export const runtime = 'nodejs'
 
 const SITE_LIMIT = 50
 
+/**
+ * GET /api/incidents/site
+ *
+ * Returns all incidents associated with a given site, regardless of status.
+ * Used by the map popup to show the full incident timeline for a site.
+ *
+ * Two parallel queries handle both old docs (scalar `siteId`) and new docs
+ * (array `siteIds`) to avoid requiring a data migration. A seen-Set prevents
+ * duplicates when a doc matches both queries (e.g. after a partial migration).
+ *
+ * Query params:
+ *   - siteId (required): the site identifier to look up
+ *
+ * Returns: { incidents: Incident[] } sorted newest-first by submitDate.
+ */
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth

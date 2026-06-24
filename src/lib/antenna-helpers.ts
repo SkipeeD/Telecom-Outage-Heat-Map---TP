@@ -1,9 +1,12 @@
 import type { AlarmSeverity, Cell, Technology } from '@/types'
 
+/** Canonical ordered list of all supported technologies — used for iteration. */
 export const TECHS: Technology[] = ['2G', '3G', '4G', '5G', '6G']
 
+/** Severity levels ordered from worst to best, used for "first match wins" lookups. */
 const SEV_ORDER: AlarmSeverity[] = ['critical', 'major', 'minor', 'warning', 'ok']
 
+/** Maps each technology to its CSS custom property name for consistent theming. */
 export const techColorVar: Record<Technology, string> = {
   '2G':  '--tech-2g',
   '3G':  '--tech-3g',
@@ -12,6 +15,7 @@ export const techColorVar: Record<Technology, string> = {
   '6G': '--tech-6g',
 }
 
+/** Maps each alarm severity to its CSS custom property name for consistent theming. */
 export const sevColorVar: Record<AlarmSeverity, string> = {
   critical: '--alarm-critical',
   major:    '--alarm-major',
@@ -20,6 +24,11 @@ export const sevColorVar: Record<AlarmSeverity, string> = {
   ok:       '--alarm-ok',
 }
 
+/**
+ * Semi-transparent RGBA colour tokens for severity badges and highlighted rows.
+ * Using RGBA instead of CSS variables keeps these usable in inline styles
+ * where var() references can't be resolved (e.g. Leaflet popups).
+ */
 export const severityPalette: Record<
   AlarmSeverity,
   { bg: string; border: string; text: string }
@@ -31,11 +40,20 @@ export const severityPalette: Record<
   ok:       { bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.3)', text: 'var(--alarm-ok)' },
 }
 
+/**
+ * Returns the worst severity across all cells on an antenna.
+ * Iterates SEV_ORDER so the first match is always the most critical.
+ */
 export function overallSeverity(cells: Cell[]): AlarmSeverity {
   for (const s of SEV_ORDER) if (cells.some(c => c.status === s)) return s
   return 'ok'
 }
 
+/**
+ * Returns the cell with the most severe active alarm — used to pick the alarm
+ * to display in the antenna popup. Only considers cells that have a currentAlarm
+ * so cells in a bad status without a concrete alarm are ignored.
+ */
 export function worstAlarmCell(cells: Cell[]): Cell | null {
   for (const s of SEV_ORDER) {
     const c = cells.find(c => c.status === s && c.currentAlarm)
@@ -44,8 +62,12 @@ export function worstAlarmCell(cells: Cell[]): Cell | null {
   return null
 }
 
+/**
+ * Converts an ISO timestamp to a human-readable relative string
+ * (e.g. "3m ago", "2h ago", "1d ago"). Used in alarm and activity feeds.
+ */
 export function relTime(iso: string): string {
-  const diff = (Date.now() - new Date(iso).getTime()) / 60000
+  const diff = (Date.now() - new Date(iso).getTime()) / 60000 // diff in minutes
   if (diff < 1) return 'just now'
   if (diff < 60) return `${Math.floor(diff)}m ago`
   const h = Math.floor(diff / 60)
@@ -53,6 +75,10 @@ export function relTime(iso: string): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
+/**
+ * Formats a millisecond duration into a compact human label.
+ * Examples: 90000 → "1m", 7200000 → "2h 0m", 90000000 → "1d 1h".
+ */
 export function formatDuration(ms: number): string {
   const totalMinutes = Math.floor(ms / 60_000)
   const days = Math.floor(totalMinutes / 1440)
@@ -63,6 +89,10 @@ export function formatDuration(ms: number): string {
   return `${minutes}m`
 }
 
+/**
+ * Returns a short status string shown in the antenna popup header,
+ * including a count of degraded cells for actionable severities.
+ */
 export function statusCopy(sev: AlarmSeverity, cells: Cell[]): string {
   const down = cells.filter(c => c.status === 'critical' || c.status === 'major').length
   switch (sev) {

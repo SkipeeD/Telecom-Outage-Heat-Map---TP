@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+/**
+ * Next.js middleware that enforces authentication at the edge.
+ * Unauthenticated users are redirected to /login; already-authenticated users
+ * trying to reach public auth pages (login, register, etc.) are sent to /map.
+ * The actual session check is cookie-based so it runs without a server round-trip.
+ */
 export function proxy(request: NextRequest) {
   const authSession = request.cookies.get('auth-session')
   const { pathname } = request.nextUrl

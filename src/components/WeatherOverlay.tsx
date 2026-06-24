@@ -56,12 +56,23 @@ interface WeatherOverlayProps {
   details: CityWeatherDetail[]
 }
 
+/**
+ * Renders weather pill buttons directly over Leaflet map cities using
+ * absolute positioning derived from `map.latLngToContainerPoint`.
+ *
+ * Clicking a pill expands a draggable detail card with temperature, conditions,
+ * a 12-hour forecast, and a network impact assessment for the city.
+ *
+ * @param enabled - Whether the overlay is currently toggled on.
+ * @param details - Fetched weather data for each city from the weather API route.
+ */
 export function WeatherOverlay({ enabled, details }: WeatherOverlayProps) {
   const map = useMap()
   const [tick, setTick] = useState(0)
   const [focusedCity, setFocusedCity] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
 
+  // Close the focused card when the user clicks outside the overlay container
   useEffect(() => {
     if (!focusedCity) return
     const onDown = (e: MouseEvent) => {
@@ -72,6 +83,8 @@ export function WeatherOverlay({ enabled, details }: WeatherOverlayProps) {
     return () => document.removeEventListener('mousedown', onDown)
   }, [focusedCity])
 
+  // Trigger a re-render on every map pan/zoom/resize so pill positions
+  // stay in sync with the changing container-pixel coordinates
   useEffect(() => {
     if (!enabled) return
     const update = () => setTick(t => t + 1)
@@ -91,6 +104,7 @@ export function WeatherOverlay({ enabled, details }: WeatherOverlayProps) {
     return m
   }, [])
 
+  // Always show the major cities; also include any city with medium/high weather risk
   const visibleCities = useMemo(() => {
     if (!enabled) return []
     const include = new Set<string>(ALWAYS_SHOWN_CITIES)
@@ -193,20 +207,30 @@ interface FocusedCardProps {
   onClose: () => void
 }
 
+/**
+ * Expanded weather detail card for a selected city.
+ * Positions itself to the right of the anchor pill when space allows, otherwise
+ * to the left, and clamps both axes to stay within the map viewport.
+ * Supports free-form drag by disabling Leaflet's own drag handler during pointer capture.
+ */
 function FocusedCard({ detail, anchor, mapWidth, mapHeight, onClose }: FocusedCardProps) {
   const map = useMap()
   const cardW = 340
   const cardH = 480
   const offset = 36
 
+  // Prefer right-side placement; fall back to left if the card would overflow
   const placeRight = anchor.x + offset + cardW + 24 < mapWidth
   let left = placeRight ? anchor.x + offset : anchor.x - offset - cardW
   let top = anchor.y - 90
+  // Clamp within the map area so the card never goes off-screen
   top = Math.max(20, Math.min(mapHeight - cardH - 20, top))
   left = Math.max(20, Math.min(mapWidth - cardW - 20, left))
 
   const [drag, setDrag] = useState<{ dx: number; dy: number }>({ dx: 0, dy: 0 })
 
+  // Custom drag handler on the header: pauses Leaflet map dragging so moving the
+  // card doesn't pan the map underneath it
   const onHeaderDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
     e.preventDefault()
@@ -381,8 +405,14 @@ function FocusedCard({ detail, anchor, mapWidth, mapHeight, onClose }: FocusedCa
   )
 }
 
+/**
+ * 12-column hourly forecast strip.
+ * Temperature offsets and probability-of-precipitation values are condition-keyed
+ * approximations rather than real forecast data, giving a plausible shape to the chart.
+ */
 function HourlyOutlook({ detail }: { detail: CityWeatherDetail }) {
   const wxColor = WX_COLOR[detail.condition]
+  // Relative temperature offsets from the current reading over 12 hours
   const tempCurve = [0, 1, 2, 2, 1, -1, -2, -3, -3, -2, -1, 0]
   const popCurve: Record<CityWeatherDetail['condition'], number[]> = {
     sunny:  [0, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0, 0],

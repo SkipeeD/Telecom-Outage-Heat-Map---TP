@@ -7,6 +7,7 @@ import { useTheme } from '@/hooks/useTheme'
 import type { Antenna, Technology, AlarmSeverity } from '@/types'
 import { cityForAntenna } from '@/lib/weather-cities'
 
+/** Numeric rank for each severity so the worst cell can be found with a simple reduce. */
 const severityRank: Record<AlarmSeverity, number> = {
   critical: 5,
   major: 4,
@@ -15,6 +16,10 @@ const severityRank: Record<AlarmSeverity, number> = {
   ok: 1,
 }
 
+/**
+ * Returns the cell with the highest alarm severity for a given antenna.
+ * Drives both the marker stroke colour and the tooltip's severity badge.
+ */
 export function getWorstCell(antenna: Antenna): { technology: Technology; status: AlarmSeverity } {
   if (!antenna.cells || antenna.cells.length === 0) {
     return { technology: '4G', status: 'ok' }
@@ -24,12 +29,21 @@ export function getWorstCell(antenna: Antenna): { technology: Technology; status
   )
 }
 
+/**
+ * Reads the current --accent CSS variable and appends an alpha channel for the
+ * selected-marker drop-shadow glow. Falls back to a hardcoded value during SSR.
+ */
 function resolveAccentGlow(): string {
   if (typeof window === 'undefined') return 'rgba(124,111,247,0.6)'
   const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
   return accent ? `${accent}99` : 'rgba(124,111,247,0.6)'
 }
 
+/**
+ * Resolves the fill (technology colour) and stroke (severity colour) for a
+ * marker by reading CSS custom properties at call time, so theme switches are
+ * picked up without a re-render.
+ */
 export function getMarkerColor(tech: Technology, severity: AlarmSeverity) {
   if (typeof window === 'undefined') return { fill: 'var(--tech-5g)', stroke: 'var(--alarm-ok)' }
 
@@ -69,12 +83,25 @@ interface MarkerLayerProps {
   markerPathsRef?: React.RefObject<Map<string, SVGElement>>
 }
 
+/**
+ * Renders one Leaflet CircleMarker per antenna and manages hover/selection
+ * transforms via direct SVG DOM manipulation (no setState) so zoom and
+ * selection changes never trigger a full React re-render.
+ *
+ * @param antennas - Full antenna list to render as markers.
+ * @param selectedId - Currently-selected antenna id (marker is scaled up).
+ * @param activeFilters - Technology/severity filters; unmatched markers are hidden.
+ * @param weatherRisk - City-keyed map; markers in at-risk cities get a weather badge.
+ * @param onAntennaClick - Callback with the antenna and its SVG element as the popup anchor.
+ * @param markerPathsRef - Shared ref map (antenna.id → SVGElement) for external callers.
+ */
 export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, onAntennaClick, markerPathsRef }: MarkerLayerProps) {
   const { theme } = useTheme()
   const map = useMap()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   const internalRef = useRef(new Map<string, SVGElement>())
+  // Use the caller-provided ref when available so MapClient can drive FocusController
   const markerPaths = markerPathsRef ?? internalRef
 
   // Keep refs so zoom handlers can read current values without stale closures
@@ -115,6 +142,7 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
     }
   }, [map, markerPaths])
 
+  // Pre-compute worst-cell data and colours once per antenna/weather change to avoid per-render work
   const antennaMarkers = useMemo(() => {
     return antennas.map(antenna => {
       const { technology, status } = getWorstCell(antenna)
@@ -145,8 +173,10 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
     <>
       {antennaMarkers.map((marker) => {
         const isSelected = selectedId === marker.id
+        // Count additional active alarms beyond the worst one shown in the tooltip badge
         const extraAlarmCount = marker.cells.filter(c => c.currentAlarm && !c.currentAlarm.resolved).length - 1
 
+        // Skip rendering this marker if it doesn't match the current tech/severity filter
         const matchesTech = !activeFilters?.technologies?.length || activeFilters.technologies.includes(marker.worstTech)
         const matchesSeverity = !activeFilters?.severities?.length || activeFilters.severities.includes(marker.worstStatus)
         if (!matchesTech || !matchesSeverity) return null
@@ -166,6 +196,8 @@ export function MarkerLayer({ antennas, selectedId, activeFilters, weatherRisk, 
               }}
               eventHandlers={{
                 add: (e) => {
+                  // Grab the internal SVG path from the Leaflet layer and register it
+                  // so scale/glow transforms can be applied without re-rendering
                   const path = (e.target as unknown as { _path?: SVGElement })._path
                   if (path) {
                     markerPaths.current.set(marker.id, path)

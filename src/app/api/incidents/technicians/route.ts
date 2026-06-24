@@ -10,6 +10,20 @@ import type { IncidentAssignee } from '@/types'
 
 export const runtime = 'nodejs'
 
+/**
+ * POST /api/incidents/technicians
+ *
+ * Replaces the technician list for an incident. Engineers can only dispatch
+ * technicians to incidents they are personally assigned to; admins have no
+ * such restriction.
+ *
+ * After updating Firestore the liveSnapshot is refreshed for active incidents,
+ * activity log entries are written for each added/removed technician, and a
+ * notification email is sent to each newly dispatched technician (fire-and-forget).
+ *
+ * Body: { incidentNumber: string; technicians: IncidentAssignee[] }
+ * Returns: { ok: true }
+ */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth
@@ -39,6 +53,7 @@ export async function POST(req: NextRequest) {
     if (invalidTechnician) {
       return NextResponse.json({ error: 'Invalid technician' }, { status: 400 })
     }
+    // Deduplicate by uid so accidental duplicate submissions are idempotent.
     const nextTechnicians = [...new Map(technicians.map(t => [t.uid, t])).values()]
 
     const db = getAdminDb()
@@ -59,6 +74,7 @@ export async function POST(req: NextRequest) {
       await snapshotOnIncidentUpdated(prev, nextIncident, db)
     }
 
+    // Compute added/removed sets to write targeted activity log entries.
     const prevUids = new Set((prev.technicians ?? []).map(t => t.uid))
     const nextUids = new Set(nextTechnicians.map(t => t.uid))
     const now = new Date().toISOString()

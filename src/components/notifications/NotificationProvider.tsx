@@ -86,13 +86,25 @@ function playSoftPing() {
 
 const UNACKED_P1_THRESHOLD_MS = 10 * 60 * 1000 // 10 min
 
+/**
+ * Watches the live incident snapshot and generates in-app notifications
+ * for relevant role-based events:
+ * - Admins: new incidents, P1 escalations when unacknowledged for 10+ minutes.
+ * - Engineers: when they are added to an incident's assignee list.
+ * - Technicians: when they are dispatched to an incident.
+ *
+ * Uses localStorage to persist "seen" and "escalated" sets across page refreshes
+ * so re-loading the page never re-fires old notifications.
+ * Exposes notifications, toasts, sound preference, and dismiss helpers via context.
+ */
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user, profile } = useAuth()
   const role = profile?.role
   const uid = profile?.uid ?? ''
 
   const enabled = !!user && (role === 'admin' || role === 'engineer' || role === 'technician')
-  const { openIncidents } = useLiveSnapshot(enabled)
+  // loading stays true until the first real Firestore callback fires
+  const { openIncidents, loading: snapshotLoading } = useLiveSnapshot(enabled)
 
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [toasts, setToasts] = useState<AppNotification[]>([])
@@ -115,6 +127,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     escalatedRef.current = loadEscalated(uid)
   }, [uid])
 
+  /** Adds a notification to both the history list and the toast queue, capped at 100 entries. */
   const fire = useCallback((notif: Omit<AppNotification, 'id' | 'read'>, withSound: boolean) => {
     const full: AppNotification = { ...notif, id: `${Date.now()}-${Math.random()}`, read: false }
     setNotifications(prev => [full, ...prev].slice(0, 100))
@@ -136,7 +149,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
 
     if (!baselineSetRef.current) {
-      // First snapshot — record as baseline; mark all as seen
+      // Wait for the first real Firestore snapshot before setting the baseline.
+      // Without this guard the baseline is set against the initial [] array
+      // (before Firestore loads), causing every incident in the first real
+      // snapshot to look "new" and fire all at once.
+      if (snapshotLoading) return
+      // First real snapshot — mark all existing incidents as seen silently.
       for (const inc of openIncidents) seenRef.current.add(inc.incidentNumber)
       if (uid) persistSeen(uid, seenRef.current)
       prevMapRef.current = currentMap
@@ -146,8 +164,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const prev = prevMapRef.current
 
-    // Collect during the pass and flush after, so no setState runs
-    // synchronously inside the effect body (avoids cascading renders).
+    // Collect notifications during the diff pass, then flush via queueMicrotask
+    // so no setState runs synchronously inside the effect body (avoids cascading renders).
     const pending: { notif: Omit<AppNotification, 'id' | 'read'>; withSound: boolean }[] = []
 
     for (const inc of openIncidents) {
@@ -217,7 +235,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         for (const { notif, withSound } of pending) fire(notif, withSound)
       })
     }
-  }, [openIncidents, enabled, role, uid, fire])
+  }, [openIncidents, snapshotLoading, enabled, role, uid, fire])
 
   // Admins: P1 escalation — poll for unacknowledged critical incidents
   useEffect(() => {

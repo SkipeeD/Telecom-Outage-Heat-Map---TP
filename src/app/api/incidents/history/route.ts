@@ -19,6 +19,18 @@ export function clearHistoryCache() {
   cache.clear()
 }
 
+/**
+ * Fetches a page of RESOLVED or CLOSED incidents with optional filters.
+ * Results are cached in a module-level Map keyed by the full parameter set;
+ * entries expire after CACHE_TTL_MS (1 min) or when clearHistoryCache() is
+ * called by the lifecycle route after a resolve/close write.
+ *
+ * @param cursor    - ISO timestamp of the last item from the previous page
+ *                    (exclusive lower bound for "before this date" pagination)
+ * @param limit     - page size, capped at MAX_PAGE_SIZE
+ * @param assigneeUid - if set, only incidents where this uid is an assignee
+ * @param sinceIso  - if set, only incidents submitted on or after this ISO date
+ */
 async function fetchHistoryPage(cursor: string, limit: number, assigneeUid: string, sinceIso: string): Promise<Incident[]> {
   const key = `${cursor}|${limit}|${assigneeUid}|${sinceIso}`
   const hit = cache.get(key)
@@ -49,6 +61,21 @@ async function fetchHistoryPage(cursor: string, limit: number, assigneeUid: stri
   return docs
 }
 
+/**
+ * GET /api/incidents/history
+ *
+ * Returns a cursor-paginated list of RESOLVED and CLOSED incidents, newest
+ * first. The `cursor` is the `submitDate` of the last item received; passing
+ * it in the next request fetches the following page.
+ *
+ * Query params:
+ *   - cursor      (optional): ISO timestamp for pagination
+ *   - limit       (optional): page size, 1–50, default 25
+ *   - assigneeUid (optional): filter to incidents assigned to this uid
+ *   - sinceIso    (optional): filter to incidents submitted on/after this date
+ *
+ * Returns: { incidents: Incident[]; nextCursor: string | null }
+ */
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth
@@ -62,6 +89,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const incidents = await fetchHistoryPage(cursor, limit, assigneeUid, sinceIso)
+    // If we got a full page, there may be more — pass the last item's date as the next cursor.
     const nextCursor = incidents.length === limit
       ? incidents[incidents.length - 1].submitDate
       : null

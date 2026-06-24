@@ -12,6 +12,11 @@ const DASHBOARD_SUMMARY_REVALIDATE_SECONDS = 5 * 60
 
 export const runtime = 'nodejs'
 
+/**
+ * Runs a Firestore query and maps documents to type T.
+ * Errors are caught and logged per-query so one failing query doesn't block
+ * the others; an empty array is returned instead of throwing.
+ */
 async function readQuery<T>(
   label: string,
   queryPromise: Promise<FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>>,
@@ -26,6 +31,11 @@ async function readQuery<T>(
   }
 }
 
+/**
+ * Returns true when the error message indicates Firebase Admin SDK credentials
+ * are missing or malformed. Used to return a 503 rather than a generic 401 so
+ * the client can display a more helpful "configuration" error.
+ */
 function isAdminCredentialError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return message.includes('Could not load the default credentials') ||
@@ -84,10 +94,23 @@ const getCachedDashboardSummary = unstable_cache(
 
 /*
  * Dashboard Summary API Route
- * Note: The main dashboard and engineer pages have been moved to real-time Firestore 
- * subscriptions for better responsiveness. This route remains for potential 
- * non-client-side data needs or legacy fallback, and provides a cached overview 
+ * Note: The main dashboard and engineer pages have been moved to real-time Firestore
+ * subscriptions for better responsiveness. This route remains for potential
+ * non-client-side data needs or legacy fallback, and provides a cached overview
  * of network health.
+ */
+
+/**
+ * GET /api/dashboard/summary
+ *
+ * Returns a cached network-health overview containing recent resolved alarms,
+ * long-lived alarms (≥24 h), and the latest incidents. The data is revalidated
+ * every 5 minutes via Next.js data cache.
+ *
+ * Auth: Bearer token in Authorization header (manually verified here because
+ * this handler predates the shared requireAuth helper).
+ *
+ * Returns: DashboardSummary
  */
 export async function GET(req: NextRequest) {
   try {

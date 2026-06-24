@@ -6,12 +6,19 @@ import type { IncidentActivity } from '@/types'
 
 const ACTIVITY_LIMIT = 200
 
+/**
+ * Normalises any timestamp shape Firestore might return into an ISO string.
+ * Handles raw ISO strings, JS Date objects, and Firestore Timestamp objects
+ * (which have a `.toDate()` method). Falls back to epoch on invalid input so
+ * the rest of the code never receives undefined/NaN.
+ */
 function toIsoTimestamp(value: unknown): string {
   if (typeof value === 'string') {
     const d = new Date(value)
     return Number.isNaN(d.getTime()) ? new Date(0).toISOString() : value
   }
   if (value instanceof Date) return value.toISOString()
+  // Firestore Timestamp duck-typing — avoid importing the Timestamp class client-side.
   if (value && typeof value === 'object' && 'toDate' in value) {
     const toDate = (value as { toDate?: unknown }).toDate
     if (typeof toDate === 'function') {
@@ -22,6 +29,11 @@ function toIsoTimestamp(value: unknown): string {
   return new Date(0).toISOString()
 }
 
+/**
+ * Opens a real-time Firestore listener on an incident's activity sub-collection
+ * and calls `callback` with the full sorted list whenever a new entry is added.
+ * Returns an unsubscribe function — call it on component unmount to avoid leaks.
+ */
 export function subscribeToActivity(
   incidentNumber: string,
   callback: (entries: IncidentActivity[]) => void,
@@ -59,6 +71,10 @@ export function subscribeToActivity(
   )
 }
 
+/**
+ * Appends a free-text note to an incident's activity log.
+ * Used by engineers to record observations without changing incident status.
+ */
 export async function addIncidentNote(
   incidentNumber: string,
   text: string,

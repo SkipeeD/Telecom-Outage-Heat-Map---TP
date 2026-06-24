@@ -18,6 +18,11 @@ const PRIORITY_COLOR: Record<string, string> = {
   '4-Low':      'var(--alarm-warning)',
 }
 
+/**
+ * Individual toast notification card.
+ * Auto-dismisses after AUTO_DISMISS_MS and navigates to the incident on click.
+ * Respects prefers-reduced-motion for enter/exit animations.
+ */
 function Toast({ notif, onDismiss, onNavigate }: {
   notif: AppNotification
   onDismiss: (id: string) => void
@@ -26,6 +31,7 @@ function Toast({ notif, onDismiss, onNavigate }: {
   const shouldReduce = useReducedMotion()
   const color = PRIORITY_COLOR[notif.priority] ?? 'var(--alarm-warning)'
 
+  // Auto-dismiss timer — restarts if the notification id changes (shouldn't happen in practice)
   useEffect(() => {
     const t = setTimeout(() => onDismiss(notif.id), AUTO_DISMISS_MS)
     return () => clearTimeout(t)
@@ -76,6 +82,11 @@ function Toast({ notif, onDismiss, onNavigate }: {
   )
 }
 
+/**
+ * Fixed overlay that renders the current toast queue in the top-right corner.
+ * Toasts stack vertically with AnimatePresence popLayout so new ones push existing
+ * ones down smoothly. Navigation target is role-dependent (admin → /admin, others → /engineer).
+ */
 export function NotificationToaster() {
   const { toasts, dismissToast } = useNotifications()
   const { profile } = useAuth()

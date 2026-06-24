@@ -57,6 +57,7 @@ const ASSIGN_FILTERS: AssignFilter[] = ['ALL', 'ASSIGNED', 'IN PROGRESS', 'RESOL
 
 type View = 'overview' | 'incidents' | 'chat'
 
+/** Returns a human-readable relative time string (e.g. "5m ago", "2h ago"). */
 function relTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const m = Math.floor(diff / 60000)
@@ -90,6 +91,10 @@ function getGreeting(): string {
   return 'Good evening'
 }
 
+/**
+ * Returns the single highest-priority open/in-progress incident to surface
+ * as the "Priority Incident" card on the overview tab.
+ */
 function getSpotlightIncident(incidents: Incident[]): Incident | null {
   const active = incidents.filter(i => i.status === 'ASSIGNED' || i.status === 'IN PROGRESS')
   if (!active.length) return null
@@ -105,6 +110,7 @@ interface SidebarProps {
   loading: boolean
 }
 
+/** Left-rail navigation sidebar shared across all engineer views. Shows nav items and an at-a-glance incident status breakdown. */
 function Sidebar({ view, setView, stats, loading }: SidebarProps) {
   const navItems: { id: View; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'overview',  label: 'Overview',     icon: <LayoutDashboard className="size-4" /> },
@@ -204,6 +210,13 @@ interface OverviewProps {
 }
 
 
+/**
+ * Overview tab: a personalised greeting with summary stats, a spotlight card
+ * for the most critical open incident, and a to-do checklist.
+ *
+ * Checklist items are either auto-driven by live data (e.g. "has set a display
+ * name") or manually togglable, with manual checks persisted in localStorage.
+ */
 function OverviewView({ incidents, loading, greeting, firstName, hasNameSet, onInspect, onGoToIncidents }: OverviewProps) {
   const stats = {
     total:      incidents.length,
@@ -480,6 +493,11 @@ interface IncidentsViewProps {
   onIncidentClosed: (incidentNumber: string) => void
 }
 
+/**
+ * Incidents tab: filterable list of all incidents assigned to the engineer,
+ * with action buttons (Acknowledge → Resolve → Close) and a side panel showing
+ * the NOC team, dispatched technicians, and activity timeline for the selected incident.
+ */
 function IncidentsView({ incidents, loading, selectedIncidentNumber, onSelect, profile, onIncidentResolved, onIncidentClosed }: IncidentsViewProps) {
   const router = useRouter()
   const [statusFilter, setStatusFilter] = useState<AssignFilter>('ALL')
@@ -825,10 +843,25 @@ function IncidentsView({ incidents, loading, selectedIncidentNumber, onSelect, p
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Engineer workspace page (engineer-only).
+ *
+ * Data strategy:
+ * - Open incidents arrive via the `useLiveSnapshot` Firestore listener so
+ *   the UI updates in real-time without polling.
+ * - Resolved/closed history is fetched once on mount from the server-cached
+ *   history endpoint, then merged with live data so the incidents list shows
+ *   both active and historical work.
+ * - Local optimistic updates (handleIncidentResolved / handleIncidentClosed)
+ *   keep the UI snappy while Firestore catches up.
+ *
+ * Access guard: non-engineers are redirected to `/dashboard`.
+ */
 export default function EngineerPage() {
   const { profile, loading: authLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+  // Support deep-linking from notifications: /engineer?incident=INC-123
   const incidentFromUrl = searchParams.get('incident')
 
   const [view, setView]           = useState<View>(incidentFromUrl ? 'incidents' : 'overview')
@@ -880,6 +913,8 @@ export default function EngineerPage() {
     return () => { cancelled = true }
   }, [profile])
 
+  // Merge history and live incidents — history goes in first so the live
+  // snapshot can overwrite stale status values with the real-time truth.
   const incidents = useMemo<Incident[]>(() => {
     const merged = new Map<string, Incident>()
     // History first, then live snapshot overwrites so the real-time state wins

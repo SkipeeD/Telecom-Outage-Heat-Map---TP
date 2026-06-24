@@ -4,6 +4,11 @@ import { LoginForm } from "@/components/login-form"
 import { GlobeAuthBackground } from "@/components/globe-auth-background"
 import { SparklesCore } from "@/components/ui/sparkles"
 
+/**
+ * Login page. Renders a two-column layout (left: form, right: animated globe)
+ * with a full-bleed sparkle particle effect layered behind both panels.
+ * The right column is hidden on mobile (lg:block).
+ */
 export default function LoginPage() {
   return (
     <div className="relative grid min-h-svh lg:grid-cols-2 bg-[var(--bg-base)] transition-colors duration-300">

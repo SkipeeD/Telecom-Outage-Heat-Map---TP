@@ -20,6 +20,16 @@ interface Props {
   onSave: (incidentNumber: string, assignees: IncidentAssignee[]) => Promise<void>
 }
 
+/**
+ * Admin-only modal for assigning exactly one owning engineer to an incident.
+ * Enforces single-select by replacing the entire pending set with the chosen uid.
+ * Engineer list is fetched once per session (`engLoaded` flag) to avoid repeated reads.
+ *
+ * @param incident - The incident to assign; null renders nothing.
+ * @param open - Controls AnimatePresence visibility.
+ * @param onClose - Called when the modal should be dismissed.
+ * @param onSave - Persists the assignee list to Firestore and should throw on failure.
+ */
 export function AssignEngineersModal({ incident, open, onClose, onSave }: Props) {
   const shouldReduce = useReducedMotion()
 
@@ -77,6 +87,7 @@ export function AssignEngineersModal({ incident, open, onClose, onSave }: Props)
     }
   }
 
+  // Single-select: checking a uid replaces the entire set; unchecking clears it
   function toggleUid(uid: string, checked: boolean) {
     setPendingUids(checked ? new Set([uid]) : new Set())
   }

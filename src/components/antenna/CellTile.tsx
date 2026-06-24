@@ -12,6 +12,16 @@ interface Props {
   onSelect: () => void
 }
 
+/**
+ * One tile in the technology grid inside AntennaPopup.
+ * Renders a disabled (greyed-out) state when the antenna has no cell for the
+ * given technology, otherwise shows the current alarm severity as a coloured LED dot.
+ *
+ * @param tech - The technology label (2G, 3G, 4G, 5G, 6G).
+ * @param cell - The matching Cell record; undefined means the technology is not deployed.
+ * @param selected - Whether this tile is currently the active selection.
+ * @param onSelect - Called when the user clicks the tile.
+ */
 export function CellTile({ tech, cell, selected, onSelect }: Props) {
   const techColor = `var(${techColorVar[tech]})`
 

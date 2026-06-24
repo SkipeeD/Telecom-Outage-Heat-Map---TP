@@ -22,15 +22,18 @@ const INC_STATUS_COLOR: Record<string, string> = {
   'CLOSED':      'var(--text-muted)',
 }
 
+/** Formats an ISO timestamp as HH:MM for the message timestamp display. */
 function chatTime(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+/** Returns a comma-separated string of all site IDs associated with an incident. */
 function incSites(inc: Incident): string {
   return (inc.siteIds?.length ? inc.siteIds : [inc.siteId]).join(', ')
 }
 
+/** Returns a dot-separated string of all technologies for an incident. */
 function incTechs(inc: Incident): string {
   return (inc.technologies?.length ? inc.technologies : [inc.technology]).join(' · ')
 }
@@ -68,7 +71,8 @@ export function IncidentChat({ incidents, loading, currentUid, currentName, list
     }
   }, [activeIncidents, selectedIncident])
 
-  // Subscribe to messages for selected incident (real-time via Firestore onSnapshot)
+  // Subscribe to messages for selected incident (real-time via Firestore onSnapshot).
+  // Resets messages to [] on incident change so the old thread doesn't flash.
   useEffect(() => {
     if (!selectedIncident) return
     setMsgLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
@@ -90,12 +94,14 @@ export function IncidentChat({ incidents, loading, currentUid, currentName, list
   async function handleSend() {
     if (!draft.trim() || !selectedIncident || sending) return
     const text = draft.trim()
+    // Optimistic message id — will be replaced by the Firestore snapshot on success
     const pendingId = `pending-${Date.now()}`
     const pendingTimestamp = new Date().toISOString()
 
     setDraft('')
     setSendError(null)
     setSending(true)
+    // Optimistically append the message so the sender sees it immediately
     setMessages(prev => [
       ...prev,
       { id: pendingId, text, senderId: currentUid, senderName: currentName, timestamp: pendingTimestamp },
@@ -105,6 +111,7 @@ export function IncidentChat({ incidents, loading, currentUid, currentName, list
       await sendChatMessage(selectedIncident.incidentNumber, text, currentUid, currentName)
     } catch {
       setSendError('Message failed to send. Check your connection and try again.')
+      // Restore draft and remove the optimistic message on failure
       setDraft(text)
       setMessages(prev => prev.filter(msg => msg.id !== pendingId))
     } finally {
@@ -113,6 +120,7 @@ export function IncidentChat({ incidents, loading, currentUid, currentName, list
     }
   }
 
+  // Enter sends; Shift+Enter and composing (IME) fall through to insert a newline
   function handleDraftKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return
     e.preventDefault()
@@ -229,6 +237,7 @@ export function IncidentChat({ incidents, loading, currentUid, currentName, list
                 <>
                   {messages.map((msg, i) => {
                     const isMe = msg.senderId === currentUid
+                    // Only show sender name on the first message in a consecutive run from the same sender
                     const showName = i === 0 || messages[i - 1].senderId !== msg.senderId
                     return (
                       <motion.div

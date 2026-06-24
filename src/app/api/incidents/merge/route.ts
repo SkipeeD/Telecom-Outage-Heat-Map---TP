@@ -10,10 +10,15 @@ import type { Incident } from '@/types'
 
 export const runtime = 'nodejs'
 
+/** Returns a new array with duplicate primitive values removed. */
 function unique<T>(items: T[]): T[] {
   return [...new Set(items)]
 }
 
+/**
+ * Returns a numeric rank for priority comparisons (lower = more urgent).
+ * Used to decide whether the source incident's priority should escalate the target.
+ */
 function priorityRank(priority: string): number {
   switch (priority) {
     case '1-Critical': return 1
@@ -23,6 +28,8 @@ function priorityRank(priority: string): number {
   }
 }
 
+// These helpers normalise legacy scalar fields (siteId, antennaId, etc.) to
+// arrays so the merge logic can use a single code path for both old and new docs.
 function incidentSites(i: Incident): string[] {
   return i.siteIds?.length ? i.siteIds : [i.siteId]
 }
@@ -36,6 +43,23 @@ function incidentTechnologies(i: Incident) {
   return i.technologies?.length ? i.technologies : [i.technology]
 }
 
+/**
+ * POST /api/incidents/merge
+ *
+ * Merges a `source` incident into a `target` incident:
+ *   - All site/antenna/alarm/technology IDs from source are unioned into target.
+ *   - If source has a higher priority (lower rank), target is escalated.
+ *   - Assignee: target's engineer is kept; if target is unowned, source's engineer
+ *     inherits and receives a notification email.
+ *   - Source alarms are re-pointed to the target incident number.
+ *   - Source is marked CLOSED with `mergedInto` set to the target number.
+ *   - Both incidents' liveSnapshot entries and activity logs are updated.
+ *
+ * Passing identical target and source numbers is a no-op (returns { ok: true }).
+ *
+ * Body: { target: Incident; source: Incident }
+ * Returns: { ok: true }
+ */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth
@@ -66,6 +90,7 @@ export async function POST(req: NextRequest) {
     const sourcePriority = currentSource.priority ?? currentSource.urgency
     const shouldEscalate = priorityRank(sourcePriority) < priorityRank(targetPriority)
 
+    // Prefer the target's existing engineer; fall back to the source's engineer.
     const targetOwner = (currentTarget.assignees ?? [])[0] ?? null
     const sourceOwner = (currentSource.assignees ?? [])[0] ?? null
     const nextOwner = targetOwner ?? sourceOwner

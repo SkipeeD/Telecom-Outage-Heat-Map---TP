@@ -44,10 +44,21 @@ function incMapAntennaId(inc: Incident): string {
 
 type View = 'jobs' | 'chat'
 
+/**
+ * Field Technician workspace page (technician-only).
+ *
+ * Technicians see only the incidents explicitly dispatched to them by an
+ * engineer (filtered from openIncidents by `technicians[].uid === profile.uid`).
+ *
+ * The lifecycle buttons mirror the engineer page but are scoped to the
+ * technician's own status transitions: Acknowledge → Resolve → Close.
+ * Access guard: any non-technician role is redirected to their own home route.
+ */
 export default function TechnicianPage() {
   const { profile, loading: authLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+  // Support deep-linking from notification emails: /technician?incident=INC-123
   const incidentFromUrl = searchParams.get('incident')
 
   const [view, setView] = useState<View>('jobs')
@@ -89,6 +100,10 @@ export default function TechnicianPage() {
   const selectedIncident =
     myJobs.find(i => i.incidentNumber === selectedIncidentNumber) ?? myJobs[0] ?? null
 
+  /**
+   * Wraps a Firestore action (acknowledge / resolve / close) with loading state
+   * so buttons disable while the write is in flight.
+   */
   async function runAction(fn: () => Promise<void>, incidentNumber: string) {
     setBusy(incidentNumber)
     try {

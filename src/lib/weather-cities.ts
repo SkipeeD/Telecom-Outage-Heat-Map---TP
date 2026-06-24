@@ -1,3 +1,4 @@
+/** Geographic centre of a Romanian city used for weather lookups. */
 export interface CityCenter {
   name: string
   lat: number
@@ -54,10 +55,17 @@ export const CITY_CENTERS: CityCenter[] = [
   { name: 'Bârlad',                 lat: 46.2290, lon: 27.6680 },
 ]
 
+/**
+ * Returns the name of the nearest city to the given coordinates using a
+ * simple squared-distance comparison (no trig needed for relative proximity
+ * within Romania's coordinate range).
+ */
 export function cityForAntenna(lat: number, lon: number): string {
   let closest = CITY_CENTERS[0]
   let minDist = Infinity
   for (const city of CITY_CENTERS) {
+    // Squared Euclidean distance — cheaper than haversine and accurate enough
+    // for picking the nearest city within a ~500km bounding box.
     const d = (city.lat - lat) ** 2 + (city.lon - lon) ** 2
     if (d < minDist) { minDist = d; closest = city }
   }

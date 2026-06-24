@@ -7,6 +7,8 @@ import type { AlarmSeverity } from '@/types'
 // lives in the same single-select group as the severity filters.
 export type FilterSeverity = AlarmSeverity | 'all' | 'active' | 'mine'
 
+
+
 interface FilterContextType {
   selectedSeverity: FilterSeverity
   setSelectedSeverity: (s: FilterSeverity) => void
@@ -16,6 +18,11 @@ interface FilterContextType {
 
 const FilterContext = createContext<FilterContextType | undefined>(undefined)
 
+/**
+ * Provides the active map/dashboard severity filter and per-severity counts to
+ * all descendant components. Counts are updated by MarkerLayer after each
+ * antenna snapshot so the Navbar pills always reflect live data.
+ */
 export function FilterProvider({ children }: { children: React.ReactNode }) {
   const [selectedSeverity, setSelectedSeverity] = useState<FilterSeverity>('all')
   const [counts, setCounts] = useState<Record<FilterSeverity, number>>({
@@ -29,6 +36,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
     ok: 0
   })
 
+  // Memoize the context value so consumers only re-render when severity or counts actually change
   const value = useMemo(() => ({
     selectedSeverity,
     setSelectedSeverity,
@@ -43,6 +51,7 @@ export function FilterProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+/** Hook to read and update the active severity filter and its counts. Must be used inside FilterProvider. */
 export function useFilters() {
   const context = useContext(FilterContext)
   if (context === undefined) {
