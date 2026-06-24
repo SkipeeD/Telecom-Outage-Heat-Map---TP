@@ -46,6 +46,16 @@ interface IncidentTimelineProps {
   className?: string
 }
 
+/**
+ * Real-time chronological activity feed for a single incident.
+ * Subscribes to Firestore activity events (created, assigned, acknowledged, resolved, etc.)
+ * and optionally shows a note composer so engineers can add free-text comments.
+ *
+ * @param incidentNumber - Firestore document id used to scope the activity subscription.
+ * @param currentUid - UID of the logged-in user; required to save notes.
+ * @param currentName - Display name used as the note author.
+ * @param allowNotes - Hides the note composer when false (e.g. in read-only admin views).
+ */
 export function IncidentTimeline({
   incidentNumber,
   currentUid,
@@ -63,6 +73,8 @@ export function IncidentTimeline({
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const prevCountRef = useRef<number | null>(null)
 
+  // Re-subscribe whenever the incidentNumber changes; reset prevCountRef so
+  // the auto-scroll guard doesn't trigger on the initial data load
   useEffect(() => {
     let cancelled = false
     queueMicrotask(() => {

@@ -6,6 +6,14 @@ interface Props {
   className?: string
 }
 
+/**
+ * Inline pill badge that displays an alarm severity level.
+ * Reads colours from the `severityPalette` helper so the appearance
+ * always matches the design system's alarm colour tokens.
+ *
+ * @param severity - The alarm severity to render.
+ * @param className - Optional extra class names for layout adjustments.
+ */
 export function SeverityBadge({ severity, className }: Props) {
   const p = severityPalette[severity]
   return (

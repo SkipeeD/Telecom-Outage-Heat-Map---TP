@@ -8,6 +8,12 @@ export const runtime = 'nodejs'
 
 const MESSAGE_LIMIT = 200
 
+/**
+ * Normalises a raw Firestore timestamp field to an ISO 8601 string.
+ * Handles plain strings, JS Dates, and Firestore Timestamp objects
+ * (which expose a `.toDate()` method). Falls back to epoch on invalid input
+ * so that the sort below still produces a stable ordering.
+ */
 function toIsoTimestamp(value: unknown): string {
   if (typeof value === 'string') {
     const d = new Date(value)
@@ -24,6 +30,17 @@ function toIsoTimestamp(value: unknown): string {
   return new Date(0).toISOString()
 }
 
+/**
+ * GET /api/chat/[incidentNumber]
+ *
+ * Fetches up to MESSAGE_LIMIT chat messages for the given incident, stored
+ * under `chats/{incidentNumber}/messages`. Messages with empty text or
+ * missing senderId are silently dropped to guard against partial writes.
+ * Results are returned sorted oldest-first so the UI can render in
+ * chronological order without an extra client-side sort.
+ *
+ * Returns: { messages: ChatMessage[] }
+ */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ incidentNumber: string }> }
@@ -67,6 +84,16 @@ export async function GET(
   }
 }
 
+/**
+ * POST /api/chat/[incidentNumber]
+ *
+ * Appends a new message to the incident's chat thread.
+ * The server sets the timestamp to avoid clock-skew between clients.
+ * A fallback displayName of "Engineer" is used when senderName is absent.
+ *
+ * Body: { text: string; senderId: string; senderName?: string }
+ * Returns: { ok: true }
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ incidentNumber: string }> }

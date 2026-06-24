@@ -61,6 +61,7 @@ type DisplayStatus = 'UNASSIGNED' | Incident['status']
 type StatusFilter = 'ALL' | DisplayStatus
 const STATUS_FILTERS: StatusFilter[] = ['ALL', 'UNASSIGNED', 'ASSIGNED', 'IN PROGRESS', 'RESOLVED', 'CLOSED']
 
+/** Converts an ISO timestamp to a human-readable relative string (e.g. "3h ago"). */
 function relTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const m = Math.floor(diff / 60000)
@@ -71,6 +72,10 @@ function relTime(iso: string): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
+/**
+ * Maps an incident's raw status to a display status, treating "ASSIGNED with no assignees"
+ * as UNASSIGNED so the UI reflects that the incident still needs an owner.
+ */
 function getDisplayStatus(incident: Incident): DisplayStatus {
   const assignees = incident.assignees ?? []
   return incident.status === 'ASSIGNED' && assignees.length === 0
@@ -78,6 +83,16 @@ function getDisplayStatus(incident: Incident): DisplayStatus {
     : incident.status
 }
 
+/**
+ * Admin incidents management panel.
+ * Combines a real-time open-incident stream with server-fetched resolved/closed history,
+ * merging both into a single deduplicated list keyed by incidentNumber.
+ * Supports status filtering, text search, expandable activity timelines,
+ * engineer assignment, and incident grouping (merge).
+ *
+ * @param highlightIncident - When provided (e.g. from a notification link), auto-expands
+ *   and searches for that incident number on mount.
+ */
 export function IncidentsPanel({ highlightIncident }: { highlightIncident?: string }) {
   const [history, setHistory]           = useState<Incident[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -137,6 +152,7 @@ export function IncidentsPanel({ highlightIncident }: { highlightIncident?: stri
   useEffect(() => {
     const currentNumbers = new Set(openIncidents.map(i => i.incidentNumber))
     const hadIncidents   = prevOpenNumbersRef.current.size > 0
+    // Only refresh when an incident number we previously saw has now disappeared
     const someDisappeared = hadIncidents &&
       [...prevOpenNumbersRef.current].some(n => !currentNumbers.has(n))
 
@@ -146,6 +162,8 @@ export function IncidentsPanel({ highlightIncident }: { highlightIncident?: stri
     prevOpenNumbersRef.current = currentNumbers
   }, [openIncidents])
 
+  // Merge open (real-time) and historical incidents; open entries overwrite history
+  // if the same incidentNumber appears in both (edge case during transition)
   const incidents = useMemo<Incident[]>(() => {
     const merged = new Map<string, Incident>()
     for (const i of openIncidents) merged.set(i.incidentNumber, i)
@@ -170,6 +188,8 @@ export function IncidentsPanel({ highlightIncident }: { highlightIncident?: stri
   }
 
   const searchTerm = search.trim().toLowerCase()
+  // Apply status filter and search, then sort: active before resolved/closed,
+  // then by priority severity, then newest first within the same bucket
   const filtered = incidents
     .filter(i => {
       if (statusFilter !== 'ALL' && getDisplayStatus(i) !== statusFilter) return false
@@ -528,16 +548,22 @@ interface GroupIncidentModalProps {
   onGroup: (source: Incident, targetIncidentNumber: string) => Promise<void>
 }
 
+/**
+ * Modal for merging (grouping) a source incident into another open incident.
+ * Only incidents with ASSIGNED or IN PROGRESS status are valid merge targets.
+ */
 function GroupIncidentModal({ incident, incidents, open, onClose, onGroup }: GroupIncidentModalProps) {
   const [target, setTarget] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // Only offer open incidents other than the source as merge targets
   const targets = useMemo(() => incidents.filter(i => {
     if (!incident) return false
     return i.incidentNumber !== incident.incidentNumber &&
       (i.status === 'ASSIGNED' || i.status === 'IN PROGRESS')
   }), [incident, incidents])
 
+  // Ensure the controlled select always has a valid value; fall back to the first available target
   const activeTarget = targets.some(i => i.incidentNumber === target)
     ? target
     : targets[0]?.incidentNumber ?? ''

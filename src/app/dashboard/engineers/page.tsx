@@ -20,10 +20,20 @@ const EASE: [number, number, number, number] = [0.4, 0, 0.2, 1]
 const normalize = (str: string) => 
   str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
 
+/**
+ * Inner content for the Engineer Incident Assignments page. Wrapped in Suspense
+ * by the outer page shell for `useSearchParams` compatibility.
+ *
+ * Shows all incidents (open + historical) filtered by engineer and time range.
+ * Data is merged from the live snapshot and the paginated history endpoint
+ * (up to 500 incidents, server-cached 15 min).
+ *
+ * Access guard: redirects non-admins to `/dashboard`.
+ */
 function EngineerContent() {
   const router = useRouter()
   const { user, profile, loading: authLoading } = useAuth()
-  
+
   const [history, setHistory] = useState<Incident[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
 
@@ -83,6 +93,8 @@ function EngineerContent() {
     return Array.from(merged.values())
   }, [openIncidents, history])
 
+  // Derive a deduped, sorted list of engineers from all incident assignees
+  // to populate the "Filter by engineer" dropdown.
   const engineers = useMemo(() => {
     const map = new Map<string, IncidentAssignee>()
     incidents.forEach(i => {
@@ -90,7 +102,7 @@ function EngineerContent() {
         map.set(a.uid, a)
       })
     })
-    return Array.from(map.values()).sort((a, b) => 
+    return Array.from(map.values()).sort((a, b) =>
       (a.displayName || a.email).localeCompare(b.displayName || b.email)
     )
   }, [incidents])
@@ -117,6 +129,7 @@ function EngineerContent() {
     }).sort((a, b) => new Date(b.submitDate).getTime() - new Date(a.submitDate).getTime())
   }, [incidents, search, selectedEngineer, timeRange])
 
+  /** Exports the currently filtered incident list as a CSV file download. */
   const exportToCSV = () => {
     if (filteredIncidents.length === 0) return
     const headers = ['Incident Number', 'Site IDs', 'Technologies', 'Priority', 'Status', 'Assignees (Names)', 'Created At', 'Resolved At']
@@ -399,6 +412,10 @@ function EngineerContent() {
   )
 }
 
+/**
+ * Engineer Incident Assignments page shell (admin-only).
+ * Handles auth-loading gate and wraps `EngineerContent` in Suspense.
+ */
 export default function EngineersPage() {
   const { loading: authLoading } = useAuth()
 

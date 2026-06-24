@@ -16,6 +16,11 @@ import { Switch } from "@/components/ui/interfaces-switch"
 import { roleLabel } from '@/lib/roles'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
 
+/**
+ * Animated dark/light theme switch.
+ * Shows a Moon icon when dark mode is active and a Sun icon for light mode,
+ * with each icon fading in/out via AnimatePresence so only the relevant one is visible.
+ */
 export function ThemeToggle() {
   const { theme, toggle, isDark } = useTheme()
 
@@ -83,6 +88,16 @@ const SEVERITY_FILTERS: { key: FilterSeverity; label: string; color: string }[] 
   { key: 'warning',  label: 'Warning',  color: 'var(--alarm-warning)' },
 ]
 
+/**
+ * Top application navigation bar.
+ *
+ * Renders a three-column layout: brand logo on the left, a centred pill with
+ * role-gated nav tabs and (on the map page) a collapsible severity filter strip,
+ * and user actions on the right.
+ *
+ * The pill shifts horizontally on non-map pages to stay visually centred even
+ * when the right-side actions column is wider than the brand column.
+ */
 export default function Navbar() {
   const { user, profile } = useAuth()
   const { selectedSeverity, setSelectedSeverity, counts } = useFilters()
@@ -93,6 +108,9 @@ export default function Navbar() {
   const actionsRef = useRef<HTMLDivElement>(null)
   const [centerOffset, setCenterOffset] = useState(0)
 
+  // Measure brand and actions widths so the pill can be shifted to true viewport centre
+  // on the dashboard. Re-measures when user or pathname changes because the actions
+  // section width varies by role (e.g. notification bell visibility).
   useEffect(() => {
     const measure = () => {
       const brandW = brandRef.current?.offsetWidth ?? 0
@@ -121,6 +139,7 @@ export default function Navbar() {
     }
   }
 
+  // Fall back through display name → email username → generic "User"
   const displayName = profile?.displayName || user.email?.split('@')[0] || 'User'
 
   const isMapPage = pathname === '/map' || pathname.startsWith('/map/')

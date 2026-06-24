@@ -8,10 +8,26 @@ import { NextRequest, NextResponse } from 'next/server'
 type Action = 'resolve' | 'close'
 type Role = UserProfile['role']
 
+/** Type guard ensuring the requested lifecycle action is one of the two allowed values. */
 function isValidAction(v: unknown): v is Action {
   return v === 'resolve' || v === 'close'
 }
 
+/**
+ * POST /api/incidents/lifecycle
+ *
+ * Advances an incident through its terminal states:
+ *   - "resolve": IN PROGRESS → RESOLVED  (records resolvedDate)
+ *   - "close":   RESOLVED   → CLOSED     (records closedDate)
+ *
+ * The caller must be an admin, or an assigned engineer/technician on the
+ * incident. State transitions are enforced — e.g. you cannot resolve an
+ * ASSIGNED incident. After each transition the liveSnapshot is updated,
+ * the history cache is invalidated, and an activity log entry is written.
+ *
+ * Body: { incidentNumber: string; action: "resolve" | "close" }
+ * Returns: { success: true }
+ */
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('Authorization')

@@ -2,6 +2,10 @@ import type { Alarm } from '@/types'
 import { relTime, sevColorVar } from '@/lib/antenna-helpers'
 import { SeverityBadge } from './SeverityBadge'
 
+/**
+ * Compact card showing a single alarm's severity badge, description text,
+ * and relative/absolute timestamps. Used inside AntennaPopup.
+ */
 export function AlarmCard({ alarm }: { alarm: Alarm }) {
   const sevColor = `var(${sevColorVar[alarm.severity]})`
   return (
@@ -23,6 +27,7 @@ export function AlarmCard({ alarm }: { alarm: Alarm }) {
   )
 }
 
+/** Dashed placeholder shown in the alarm slot when a cell has no current alarm. */
 export function EmptyAlarm({ text }: { text: string }) {
   return (
     <div className="p-3.5 text-center text-[12px] text-[var(--text-secondary)] bg-[var(--glass-bg)] border border-dashed border-[var(--glass-border)] rounded-[var(--radius-md)]">

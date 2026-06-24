@@ -12,6 +12,12 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+/**
+ * Low-level email sender via Gmail SMTP. Skips silently when credentials are
+ * absent (e.g. local dev without `.env.local`) so missing config doesn't crash
+ * the application. Errors during send are caught and logged rather than thrown,
+ * so a failed email never causes an API route to return 500.
+ */
 export async function sendEmail({
   to,
   subject,
@@ -41,6 +47,7 @@ export async function sendEmail({
   }
 }
 
+/** Escapes special HTML characters to prevent XSS in email HTML bodies. */
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -50,15 +57,22 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Formats a contact as "Display Name <email>" or just "email" if no display name. */
 function contactLabel(contact: IncidentAssignee): string {
   return contact.displayName ? `${contact.displayName} <${contact.email}>` : contact.email;
 }
 
+/** Joins a list of contacts into a comma-separated string, or returns `empty` when the list is empty. */
 function formatContactList(contacts: IncidentAssignee[], empty: string): string {
   if (contacts.length === 0) return empty;
   return contacts.map(contactLabel).join(', ');
 }
 
+/**
+ * Builds a list of human-readable location lines for an incident email.
+ * Falls back gracefully to legacy single-value fields when the multi-site
+ * arrays are absent (older incidents).
+ */
 function formatIncidentLocation(incident: Incident): string[] {
   const sites = incident.siteIds?.length ? incident.siteIds : (incident.siteId ? [incident.siteId] : []);
   const antennas = incident.antennaIds?.length ? incident.antennaIds : (incident.antennaId ? [incident.antennaId] : []);
@@ -71,6 +85,10 @@ function formatIncidentLocation(incident: Incident): string[] {
   ].filter((line): line is string => line !== null);
 }
 
+/**
+ * Renders a list of label/value pairs as HTML table rows.
+ * String array values are joined with `<br />` for multi-line display.
+ */
 function detailsHtml(rows: Array<[string, string | string[]]>): string {
   return rows.map(([label, value]) => {
     const body = Array.isArray(value)
@@ -86,6 +104,11 @@ function detailsHtml(rows: Array<[string, string | string[]]>): string {
   }).join('');
 }
 
+/**
+ * Sends an email to an engineer notifying them that they have been assigned as
+ * the owning engineer for a new incident. Includes urgency, location, and the
+ * current field technician roster so the engineer has full context at a glance.
+ */
 export async function sendEngineerAssignmentNotification({
   engineerEmail,
   engineerName,
@@ -139,6 +162,11 @@ Please check the Telecom Heatmap dashboard for full details and acknowledge the 
   });
 }
 
+/**
+ * Sends an email to a field technician notifying them that they have been
+ * dispatched to an incident. Includes the owning engineer contact and the
+ * full list of co-dispatched technicians so the field team can coordinate.
+ */
 export async function sendTechnicianAssignmentNotification({
   technicianEmail,
   technicianName,

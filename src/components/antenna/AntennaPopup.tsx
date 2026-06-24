@@ -39,6 +39,19 @@ interface Props {
   onOpenDetails?: (antenna: Antenna, tech: Technology) => void
 }
 
+/**
+ * Floating popup anchored to a Leaflet marker.
+ * Computes its own screen position via getBoundingClientRect so it tracks the
+ * marker as the map pans, and falls back gracefully when anchor geometry is unavailable.
+ * Supports free-form drag (sets hasDragged to skip further auto-positioning).
+ *
+ * @param antenna - The antenna whose data to display.
+ * @param anchor - The marker's SVGElement used to compute popup placement.
+ * @param open - Drives AnimatePresence mount/unmount.
+ * @param onClose - Dismiss callback (Escape key or outside click).
+ * @param onAcknowledge - Optional callback invoked when the Acknowledge button is pressed.
+ * @param onOpenDetails - Opens the full AntennaDetailsPanel for the given technology.
+ */
 export function AntennaPopup({
   antenna,
   anchor,
@@ -63,7 +76,7 @@ export function AntennaPopup({
     worstCell?.technology ?? antenna.cells[0]?.technology ?? null,
   )
 
-  // Reset state during render when the antenna changes (avoids setState-in-effect)
+  // Reset state during render when the antenna changes (avoids setState-in-effect lag)
   if (prevAntennaId !== antenna.id) {
     setPrevAntennaId(antenna.id)
     setSelectedTech(worstCell?.technology ?? antenna.cells[0]?.technology ?? null)
@@ -71,7 +84,7 @@ export function AntennaPopup({
     setSiteIncidents([])
   }
 
-  // Ref mutation must stay outside render
+  // Reset the drag flag on antenna change (ref mutations must stay outside render)
   useEffect(() => {
     hasDragged.current = false
   }, [antenna.id])
@@ -111,6 +124,8 @@ export function AntennaPopup({
     }
   }
 
+  // useLayoutEffect ensures position is calculated before paint to prevent a frame of
+  // the popup appearing at (0,0). Skipped when the user has manually dragged the popup.
   useLayoutEffect(() => {
     if (!open || !anchor || !wrapRef.current) return
     if (hasDragged.current) return
@@ -124,6 +139,7 @@ export function AntennaPopup({
       const spaceBelow = winH - a.bottom - GAP - MARGIN
       const spaceAbove = a.top - GAP - MARGIN
 
+      // Prefer below; fall back to above; if both fit poorly, pick the roomier side
       let placement: Placement
       let top: number
       if (h <= spaceBelow) {
@@ -140,6 +156,7 @@ export function AntennaPopup({
       let left = a.left + a.width / 2 - POPUP_WIDTH / 2
       left = Math.max(MARGIN, Math.min(winW - POPUP_WIDTH - MARGIN, left))
 
+      // arrowX is the horizontal distance from the popup's left edge to the anchor centre
       const anchorCenterX = a.left + a.width / 2
       const arrowX = Math.max(18, Math.min(POPUP_WIDTH - 18, anchorCenterX - left))
 

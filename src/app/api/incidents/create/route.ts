@@ -13,6 +13,10 @@ const SITE_MERGE_RADIUS_M = 500
 const OPEN_STATUSES = ['ASSIGNED', 'IN PROGRESS']
 const SITE_LIMIT = 50
 
+/**
+ * Returns the great-circle distance in metres between two WGS-84 coordinates.
+ * Used to decide which nearby antennas fall within the site-merge radius.
+ */
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6_371_000
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -23,6 +27,7 @@ function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): num
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+/** Maps an alarm severity to an ITIL-style urgency string for the incident. */
 function severityToUrgency(severity: AlarmSeverity): Incident['urgency'] {
   switch (severity) {
     case 'critical': return '1-Critical'
@@ -32,6 +37,10 @@ function severityToUrgency(severity: AlarmSeverity): Incident['urgency'] {
   }
 }
 
+/**
+ * Returns a numeric rank for priority comparisons (lower = more urgent).
+ * Used to decide whether a new alarm should escalate an existing incident.
+ */
 function priorityRank(priority: string): number {
   switch (priority) {
     case '1-Critical': return 1
@@ -41,6 +50,24 @@ function priorityRank(priority: string): number {
   }
 }
 
+/**
+ * POST /api/incidents/create
+ *
+ * Creates a new incident for an alarm, or merges the alarm into an existing
+ * open incident when another incident already covers a site within
+ * SITE_MERGE_RADIUS_M (500 m) of the primary antenna.
+ *
+ * Merge logic:
+ *   1. Collect all antennas within 500 m of `primaryAntenna`.
+ *   2. Query open incidents for any of those sites (supports both legacy
+ *      `siteId` and the newer `siteIds` array field).
+ *   3. If an open incident exists, append the alarm/site/antenna IDs to it
+ *      and escalate its priority if the new alarm is more severe.
+ *   4. Otherwise, create a new ASSIGNED incident and log the creation.
+ *
+ * Body: { alarm: Alarm; primaryAntenna: Antenna; allAntennas?: Antenna[] }
+ * Returns: { incidentNumber: string }
+ */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth
@@ -75,7 +102,8 @@ export async function POST(req: NextRequest) {
     const scopeSiteIds = [...siteIds]
     const scopeAntennaIds = [...antennaIds]
 
-    // Find open incidents for any of these sites
+    // Find open incidents for any of these sites.
+    // Two queries per site handle both old docs (siteId scalar) and new docs (siteIds array).
     const seen = new Set<string>()
     const openIncidents: Incident[] = []
     await Promise.all(scopeSiteIds.map(async siteId => {
@@ -94,10 +122,12 @@ export async function POST(req: NextRequest) {
 
     const urgency = severityToUrgency(alarm.severity)
     const impact = alarm.severity === 'critical' ? '2-Significant/Large' : '4-Minor/Localized'
+    // Pick the oldest open incident to merge into (FIFO so the original ticket stays alive).
     const existing = openIncidents[0]
 
     if (existing) {
       const existingPriority = existing.priority ?? existing.urgency
+      // Escalate the existing incident only when the new alarm is more severe.
       const shouldEscalate = priorityRank(urgency) < priorityRank(existingPriority)
       await Promise.all([
         db.collection('incidents').doc(existing.incidentNumber).update({

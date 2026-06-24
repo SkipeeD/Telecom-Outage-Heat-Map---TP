@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server'
 import { getOutagePrediction } from '@/lib/gemini'
 
+/**
+ * POST /api/weather/predict
+ *
+ * Sends current weather details for all monitored cities to the Gemini AI model
+ * and returns an outage-risk prediction. The prediction helps NOC operators
+ * anticipate weather-driven network degradation before alarms fire.
+ *
+ * Body: { weatherDetails: CityWeatherDetail[] }
+ * Returns: the prediction object returned by getOutagePrediction (Gemini response)
+ */
 export async function POST(req: Request) {
   try {
     const { weatherDetails } = await req.json()

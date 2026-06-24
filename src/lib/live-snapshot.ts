@@ -17,14 +17,20 @@ import type { Incident } from '@/types'
 
 const LIVE_SNAPSHOT_PATH = 'meta/liveSnapshot'
 
+/** Returns true for statuses that mean the incident is still being worked. */
 function isOpenStatus(status: Incident['status']): status is 'ASSIGNED' | 'IN PROGRESS' {
   return status === 'ASSIGNED' || status === 'IN PROGRESS'
 }
 
+/** Convenience accessor for the singleton liveSnapshot document. */
 function ref(db: Firestore) {
   return db.doc(LIVE_SNAPSHOT_PATH)
 }
 
+/**
+ * Augments any patch object with monotonically-increasing `version` and a
+ * fresh `updatedAt` timestamp so clients can detect stale data.
+ */
 function withMeta(patch: Record<string, unknown>): Record<string, unknown> {
   return {
     ...patch,
@@ -62,24 +68,32 @@ export async function snapshotOnIncidentUpdated(prev: Incident, next: Incident, 
   const patch: Record<string, unknown> = {}
 
   if (prev.status !== next.status) {
+    // Swap status counters atomically to keep byStatus consistent.
     patch[`totals.byStatus.${prev.status}`] = FieldValue.increment(-1)
     patch[`totals.byStatus.${next.status}`] = FieldValue.increment(1)
+    // Only track urgency buckets for open incidents.
     if (isOpenStatus(prev.status) && !isOpenStatus(next.status)) {
+      // Incident moved from open to closed — remove from urgency counter.
       patch[`totals.openByUrgency.${prev.urgency}`] = FieldValue.increment(-1)
     } else if (!isOpenStatus(prev.status) && isOpenStatus(next.status)) {
+      // Incident re-opened — add to urgency counter.
       patch[`totals.openByUrgency.${next.urgency}`] = FieldValue.increment(1)
     }
   } else if (isOpenStatus(prev.status) && prev.urgency !== next.urgency) {
+    // Status unchanged but urgency was re-prioritised — update urgency bucket only.
     patch[`totals.openByUrgency.${prev.urgency}`] = FieldValue.increment(-1)
     patch[`totals.openByUrgency.${next.urgency}`] = FieldValue.increment(1)
   }
 
   if (isOpenStatus(next.status)) {
+    // Replace the full incident entry so clients get all updated fields.
     patch[`openIncidents.${next.incidentNumber}`] = next
   } else {
+    // Remove the entry when closed/resolved — keeps the map lean.
     patch[`openIncidents.${next.incidentNumber}`] = FieldValue.delete()
   }
 
+  // Nothing changed from the snapshot's perspective — skip the write.
   if (Object.keys(patch).length === 0) return
   try {
     await ref(db).update(withMeta(patch))

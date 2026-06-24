@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 type Role = UserProfile['role']
 
+/** Validates that the payload is a non-empty array of INC-prefixed strings (max 20). */
 function isIncidentNumberList(value: unknown): value is string[] {
   return Array.isArray(value) &&
     value.length > 0 &&
@@ -13,6 +14,20 @@ function isIncidentNumberList(value: unknown): value is string[] {
     value.every(item => typeof item === 'string' && item.startsWith('INC'))
 }
 
+/**
+ * POST /api/incidents/acknowledge
+ *
+ * Transitions one or more ASSIGNED incidents to IN PROGRESS in a single
+ * Firestore transaction, signalling that the caller has begun work.
+ * Non-admin callers must be listed as an assignee or technician on each
+ * incident. Up to 20 incidents can be acknowledged in one request.
+ *
+ * After the transaction commits, the liveSnapshot is updated and an activity
+ * log entry is written for each transitioned incident (fire-and-forget).
+ *
+ * Body: { incidentNumbers: string[] }
+ * Returns: { updated: string[] } — the subset of IDs that changed status.
+ */
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('Authorization')
@@ -58,6 +73,7 @@ export async function POST(req: NextRequest) {
           throw new Error('FORBIDDEN')
         }
 
+        // Only transition ASSIGNED → IN PROGRESS; skip incidents already in progress.
         if (incident.status === 'ASSIGNED') {
           tx.update(ref, { status: 'IN PROGRESS' })
           nextUpdated.push(incidentNumber)

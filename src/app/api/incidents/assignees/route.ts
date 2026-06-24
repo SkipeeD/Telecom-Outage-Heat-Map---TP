@@ -10,6 +10,21 @@ import type { IncidentAssignee } from '@/types'
 
 export const runtime = 'nodejs'
 
+/**
+ * POST /api/incidents/assignees
+ *
+ * Replaces the engineer assignee list for an incident. Only admins may call
+ * this endpoint. At most one engineer can be assigned at a time; the request
+ * is rejected if more than one unique assignee is provided.
+ *
+ * After updating Firestore the liveSnapshot is refreshed for ASSIGNED and
+ * IN PROGRESS incidents, and activity log entries are written for each
+ * newly added or removed engineer. A notification email is sent to each
+ * newly assigned engineer (fire-and-forget).
+ *
+ * Body: { incidentNumber: string; assignees: IncidentAssignee[] }
+ * Returns: { ok: true }
+ */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth
@@ -39,6 +54,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid assignee' }, { status: 400 })
     }
 
+    // Deduplicate by uid before applying the one-engineer limit.
     const nextAssignees = [...new Map(assignees.map(a => [a.uid, a])).values()]
     if (nextAssignees.length > 1) {
       return NextResponse.json({ error: 'Only one engineer can be assigned to an incident' }, { status: 400 })
@@ -67,6 +83,7 @@ export async function POST(req: NextRequest) {
       await snapshotOnIncidentUpdated(prev, nextIncident, db)
     }
 
+    // Compute added/removed sets to write targeted activity log entries.
     const prevUids = new Set((prev.assignees ?? []).map(a => a.uid))
     const nextUids = new Set(nextAssignees.map(a => a.uid))
     const now = new Date().toISOString()

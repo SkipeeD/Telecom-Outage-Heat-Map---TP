@@ -42,11 +42,13 @@ export function AssignTechniciansModal({ incident, open, onClose, onSave }: Prop
         setTechLoaded(false)
         return
       }
+      // Pre-populate the selection with any already-dispatched technicians
       setPendingUids(new Set((incident.technicians ?? []).map(t => t.uid)))
       if (!techLoaded) {
         setLoadingTech(true)
         try {
           const raw = await getTechnicians()
+          // Deduplicate by uid — guards against duplicate Firestore docs
           const unique = [...new Map(raw.map(t => [t.uid, t])).values()]
           setTechnicians(unique)
           setTechLoaded(true)
@@ -81,6 +83,8 @@ export function AssignTechniciansModal({ incident, open, onClose, onSave }: Prop
     }
   }
 
+  // Multi-select (unlike AssignEngineersModal which is single-select):
+  // multiple technicians can be dispatched to the same incident
   function toggleUid(uid: string, checked: boolean) {
     const next = new Set(pendingUids)
     if (checked) next.add(uid)

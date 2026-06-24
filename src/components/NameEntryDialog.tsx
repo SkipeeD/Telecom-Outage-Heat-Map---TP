@@ -16,6 +16,13 @@ import { Button } from "@/components/ui/button"
 import { usePathname } from 'next/navigation'
 import { motion } from 'motion/react'
 
+/**
+ * One-time dialog shown to verified users who have not yet set a display name.
+ * Blocks access to the rest of the app until a name is submitted, preventing
+ * "Unknown user" entries in chat and notifications.
+ *
+ * The dialog is non-dismissable (no close button) to ensure the profile is always complete.
+ */
 export function NameEntryDialog() {
   const { user, profile, setProfile } = useAuth()
   const [name, setName] = useState('')
@@ -23,10 +30,12 @@ export function NameEntryDialog() {
   const [error, setError] = useState('')
   const pathname = usePathname()
 
+  // Google sign-in users are always considered verified even if emailVerified is false
   const isVerified = useMemo(() => {
     return user?.emailVerified || (user && user.providerData.some(p => p.providerId === 'google.com'))
   }, [user])
 
+  // Only show on authenticated, verified app pages where a name is still missing
   const shouldShow = !!(
     user &&
     isVerified &&

@@ -27,6 +27,17 @@ const fetchRecentIncidents = unstable_cache(
   { revalidate: LEGACY_LIST_TTL_S },
 )
 
+/**
+ * GET /api/incidents
+ *
+ * Legacy endpoint that returns the 100 most recent incidents ordered by
+ * submitDate. The live UI now uses real-time Firestore subscriptions
+ * (meta/liveSnapshot) for open incidents and /api/incidents/history for
+ * resolved/closed ones. This route is kept for backwards-compat callers
+ * and is heavily cached (5 min TTL) to limit Firestore reads.
+ *
+ * Returns: { incidents: Incident[] }
+ */
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth

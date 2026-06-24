@@ -1,5 +1,12 @@
 import { auth } from './firebase'
 
+/**
+ * Thin wrapper around `fetch` that attaches the current user's Firebase ID token
+ * as a Bearer header. Throws if the user is not authenticated or if the server
+ * returns a non-2xx status. Automatically sets Content-Type: application/json
+ * for JSON bodies, but leaves it unset for FormData so the browser can set the
+ * correct multipart boundary.
+ */
 export async function apiFetch<T = unknown>(path: string, options?: RequestInit): Promise<T> {
   const idToken = await auth.currentUser?.getIdToken()
   if (!idToken) throw new Error('Not authenticated')

@@ -4,6 +4,10 @@ import { SignupForm } from "@/components/signup-form"
 import { GlobeAuthBackground } from "@/components/globe-auth-background"
 import { SparklesCore } from "@/components/ui/sparkles"
 
+/**
+ * Registration page. Mirrors the login page layout with a two-column split
+ * (form left, animated globe right) and shared sparkle background.
+ */
 export default function RegisterPage() {
   return (
     <div className="relative grid min-h-svh lg:grid-cols-2 bg-[var(--bg-base)] transition-colors duration-300">

@@ -4,6 +4,10 @@ import { ForgotPasswordForm } from "@/components/forgot-password-form"
 import { GlobeAuthBackground } from "@/components/globe-auth-background"
 import { SparklesCore } from "@/components/ui/sparkles"
 
+/**
+ * Forgot-password page. Same two-column auth shell used by login/register,
+ * presenting the password-reset form on the left with the animated globe on the right.
+ */
 export default function ForgotPasswordPage() {
   return (
     <div className="relative grid min-h-svh lg:grid-cols-2 bg-[var(--bg-base)] transition-colors duration-300">

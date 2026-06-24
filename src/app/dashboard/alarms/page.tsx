@@ -45,6 +45,19 @@ const severityRank: Record<AlarmSeverity, number> = {
 
 type SeverityFilter = 'all' | AlarmSeverity
 
+/**
+ * Alarm Centre page — full alarm view, accessible from the dashboard header.
+ *
+ * Two sections:
+ * - Chronic Alarms: alarms that stayed active for more than 24 hours (from the
+ *   5-min-cached `/api/dashboard/summary` endpoint, polled every 30 s).
+ * - Live Network Alerts: all currently active unresolved alarms, sourced from the
+ *   real-time `useLiveSnapshot` listener. Each alert is cross-referenced with
+ *   the open incidents list to surface assignee avatars inline.
+ *
+ * Both sections support per-severity filtering via pill buttons and can be
+ * independently collapsed.
+ */
 export default function AlarmsPage() {
   const { user } = useAuth()
   const router = useRouter()
@@ -54,6 +67,7 @@ export default function AlarmsPage() {
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  // Incrementing refreshKey re-triggers the data fetch effect (manual refresh button)
   const [refreshKey, setRefreshKey] = useState(0)
   const { snapshot, openIncidents } = useLiveSnapshot(!!user)
 
@@ -97,6 +111,8 @@ export default function AlarmsPage() {
     return () => { cancelled = true; clearInterval(id) }
   }, [user, refreshKey])
 
+  // Merge historical incidents (from summary API) with live open incidents so
+  // the alarm list can show assignees even for recently opened incidents.
   const allIncidents = useMemo(() => {
     const merged = new Map<string, Incident>()
     for (const i of incidents) merged.set(i.incidentNumber, i)

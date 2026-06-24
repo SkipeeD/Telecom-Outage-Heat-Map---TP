@@ -1,6 +1,10 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+/**
+ * Merges Tailwind class names, resolving conflicts via tailwind-merge so that
+ * later classes always win (e.g. `cn('p-2', 'p-4')` → `'p-4'`).
+ */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -27,6 +31,12 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/expired-action-code':                    'This reset link has expired. Please request a new one.',
 }
 
+/**
+ * Converts a Firebase Auth error into a user-readable message.
+ * Falls back to a generic message for codes not in the lookup table.
+ * Note: 'auth/cancelled-popup-request' intentionally maps to '' so the UI
+ * stays silent when the user simply dismisses a popup.
+ */
 export function getAuthErrorMessage(err: unknown): string {
   const code = (err as { code?: string })?.code ?? ''
   const mapped = AUTH_ERROR_MESSAGES[code]

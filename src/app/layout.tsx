@@ -13,6 +13,17 @@ export const metadata: Metadata = {
   description: "Professional Telecom NOC Dashboard",
 };
 
+/**
+ * Root layout wrapping every page in the application.
+ *
+ * Responsibilities:
+ * - Injects an inline script before hydration to read the persisted `theme`
+ *   key from localStorage and apply the `dark` class synchronously, preventing
+ *   a flash of the wrong theme on first paint.
+ * - Wraps the tree in provider order: Auth → Notifications → Filters.
+ *   The Navbar and NameEntryDialog sit outside `children` so they render on
+ *   every route without needing to be imported by individual pages.
+ */
 export default function RootLayout({
                                      children,
                                    }: Readonly<{
@@ -25,6 +36,7 @@ export default function RootLayout({
        */
       <html lang="en" className={cn("h-full antialiased", "font-sans")} suppressHydrationWarning>
       <head>
+        {/* Blocking theme-init script: runs before React hydration to avoid a dark→light flash */}
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('theme')||'dark';if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();` }} />
       </head>
       <body className="h-full flex flex-col bg-bg-base text-text-primary" suppressHydrationWarning>

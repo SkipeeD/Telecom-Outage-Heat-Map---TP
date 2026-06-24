@@ -6,6 +6,16 @@ import type { UserProfile } from '@/types'
 
 export const runtime = 'nodejs'
 
+/**
+ * GET /api/engineers
+ *
+ * Returns all user profiles that carry the "engineer" role, deduplicated by uid.
+ * Used by the admin assignment panel to populate the engineer picker.
+ * The deduplication step guards against legacy docs that were written twice
+ * before the uid field was introduced.
+ *
+ * Returns: { engineers: UserProfile[] }
+ */
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth

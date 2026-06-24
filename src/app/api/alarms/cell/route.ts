@@ -8,6 +8,20 @@ export const runtime = 'nodejs'
 
 const CELL_HISTORY_LIMIT = 50
 
+/**
+ * GET /api/alarms/cell
+ *
+ * Returns the alarm history for a specific antenna cell, identified by the
+ * combination of `antennaId` and `tech` (technology, e.g. "4G") query params.
+ * Results are capped at CELL_HISTORY_LIMIT and sorted newest-first in memory
+ * because Firestore can't sort by a string timestamp without a composite index.
+ *
+ * Query params:
+ *   - antennaId (required): Firestore topology doc id
+ *   - tech      (required): technology band ("2G" | "3G" | "4G" | "5G")
+ *
+ * Returns: { alarms: Alarm[] }
+ */
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth

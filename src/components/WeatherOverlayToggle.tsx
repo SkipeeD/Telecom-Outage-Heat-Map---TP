@@ -10,6 +10,14 @@ interface WeatherOverlayToggleProps {
   onToggle: () => void
 }
 
+/**
+ * Fixed-position pill in the bottom-left corner of the map that toggles the
+ * weather overlay on/off. Animates the cloud icon between active (CloudRain)
+ * and inactive (CloudOff) states using AnimatePresence.
+ *
+ * @param enabled - Current overlay state.
+ * @param onToggle - Callback to flip the state.
+ */
 export function WeatherOverlayToggle({ enabled, onToggle }: WeatherOverlayToggleProps) {
   return (
     <div

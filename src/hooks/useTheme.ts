@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react'
 
+/**
+ * Theme hook that reads, applies, and syncs the dark/light preference.
+ *
+ * - On mount, initialises from `localStorage` (default: dark).
+ * - On `toggle`, updates `document.documentElement` class and persists to `localStorage`.
+ * - Watches the `class` attribute on `<html>` via a MutationObserver so that
+ *   multiple mounted instances of this hook (e.g. Navbar + Dashboard) stay in sync
+ *   without needing a context provider.
+ *
+ * @returns `{ theme, toggle, isDark }`.
+ */
 export function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window === 'undefined') return 'dark'

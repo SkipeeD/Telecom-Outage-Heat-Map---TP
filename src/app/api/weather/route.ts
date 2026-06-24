@@ -65,6 +65,12 @@ const CITY_REGIONS: Record<string, string> = {
   'Bârlad':                 'Moldova',
 }
 
+/**
+ * Converts a WMO weather interpretation code and wind speed into a simplified
+ * Condition category. Wind is checked after precipitation codes so that a
+ * stormy/rainy day with high wind is still labelled by precipitation first.
+ * See https://open-meteo.com/en/docs for the full WMO code table.
+ */
 function weatherCodeToCondition(code: number, windSpeed: number): Condition {
   if (code >= 95) return 'stormy'
   if (code >= 80) return 'rainy'
@@ -76,12 +82,17 @@ function weatherCodeToCondition(code: number, windSpeed: number): Condition {
   return 'sunny'
 }
 
+/**
+ * Maps weather metrics to a network-impact risk level.
+ * Thresholds: stormy/wind>60 km/h/precip>5 mm → high; rainy/wind>30/any precip → medium.
+ */
 function deriveRisk(precipitation: number, windSpeed: number, condition: Condition): Risk {
   if (condition === 'stormy' || windSpeed > 60 || precipitation > 5) return 'high'
   if (condition === 'rainy' || condition === 'windy' || windSpeed > 30 || precipitation > 0) return 'medium'
   return 'low'
 }
 
+/** Returns a human-readable NOC status string for a given condition/risk combination. */
 function deriveDescription(condition: Condition, risk: Risk): string {
   if (condition === 'stormy') return 'Severe electrical activity. High risk of power fluctuations.'
   if (condition === 'rainy' && risk === 'high') return 'Heavy precipitation. Structural monitoring active.'
@@ -100,11 +111,28 @@ interface OpenMeteoLocation {
   }
 }
 
+/**
+ * GET /api/weather
+ *
+ * Fetches current weather for all Romanian city centres defined in CITY_CENTERS
+ * from the Open-Meteo API (no API key required) and returns:
+ *   - weatherRisk:    a city-name → boolean map (true = precipitation > 0 OR wind > 50 km/h)
+ *   - weatherDetails: enriched per-city objects with condition, risk, and description
+ *
+ * The response is cached by Next.js for 30 minutes (revalidate: 1800) to avoid
+ * hammering the external API on every client poll. On error, empty collections
+ * are returned rather than propagating a 500 so the UI degrades gracefully.
+ *
+ * This endpoint requires no auth — weather data is not sensitive.
+ *
+ * Returns: { weatherRisk: Record<string, boolean>; weatherDetails: CityWeatherDetail[] }
+ */
 export async function GET() {
   try {
     const lats = CITY_CENTERS.map(c => c.lat).join(',')
     const lons = CITY_CENTERS.map(c => c.lon).join(',')
 
+    // Batch all cities into a single Open-Meteo request using comma-separated coordinates.
     const url =
       `https://api.open-meteo.com/v1/forecast` +
       `?latitude=${lats}&longitude=${lons}` +
@@ -130,6 +158,7 @@ export async function GET() {
       const condition = weatherCodeToCondition(weather_code ?? 0, wind)
       const risk      = deriveRisk(prec, wind, condition)
 
+      // Flag the city as weather-risky when there is any precipitation or strong wind.
       weatherRisk[city.name] = prec > 0 || wind > 50
       weatherDetails.push({
         city:          city.name,

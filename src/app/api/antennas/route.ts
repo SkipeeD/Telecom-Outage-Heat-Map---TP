@@ -74,6 +74,22 @@ async function getTopology(): Promise<{ antennas: Antenna[]; fromStale: boolean 
 
 // ─── Route handler ───────────────────────────────────────────────────────────
 
+/**
+ * GET /api/antennas
+ *
+ * Returns the full antenna topology together with per-severity counts.
+ * Topology positions are static (only the simulator mutates `cells`), so
+ * responses are cached for 6 hours and served from a module-level stale
+ * fallback if Firestore is temporarily unavailable.
+ *
+ * Query params:
+ *   - severity (optional): if provided and valid, filters the returned
+ *     antenna list to those that have at least one cell at that severity.
+ *     Counts always reflect the full unfiltered topology.
+ *
+ * Returns: { antennas: Antenna[], counts: Record<AlarmSeverity | 'all', number> }
+ * Response header X-Cache: "HIT" | "STALE"
+ */
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req)
   if (isAuthError(auth)) return auth

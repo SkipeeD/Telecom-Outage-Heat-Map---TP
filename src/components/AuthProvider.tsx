@@ -22,14 +22,24 @@ const AuthContext = createContext<AuthContextType>({
   setProfile: () => {},
 })
 
+/** Hook to access the current Firebase user and their Firestore profile from any component. */
 export const useAuth = () => useContext(AuthContext)
 
+/**
+ * Narrows an unknown custom claim value to a valid app role.
+ * Returns undefined for anything that is not one of the four known roles
+ * so callers can safely fall back to the Firestore profile value.
+ */
 function parseRoleClaim(role: unknown): UserProfile['role'] | undefined {
   return role === 'admin' || role === 'engineer' || role === 'technician' || role === 'user'
     ? role
     : undefined
 }
 
+/**
+ * Builds a minimal UserProfile from a Firebase user when the Firestore
+ * document is missing or an error occurs during fetch.
+ */
 function getFallbackProfile(firebaseUser: User, role: UserProfile['role'] = 'user'): UserProfile {
   return {
     uid: firebaseUser.uid,
@@ -39,6 +49,14 @@ function getFallbackProfile(firebaseUser: User, role: UserProfile['role'] = 'use
   }
 }
 
+/**
+ * Top-level authentication context provider.
+ * Combines Firebase Auth state with a Firestore user profile and handles
+ * role-based redirects so every page always gets the right user context.
+ *
+ * Renders an "Authenticating…" splash until the first auth state resolution,
+ * preventing layout flicker on protected routes.
+ */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)

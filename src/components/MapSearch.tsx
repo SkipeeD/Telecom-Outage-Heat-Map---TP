@@ -6,6 +6,7 @@ import { Search } from 'lucide-react'
 import type { Antenna } from '@/types'
 import { useLiveSnapshot } from '@/hooks/useLiveSnapshot'
 
+/** Strips diacritics and lowercases a string so search is accent-insensitive (e.g. "Timi\u0219oara" \u2192 "timisoara"). */
 function normalize(str: string) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
@@ -21,6 +22,14 @@ interface Props {
   onSelect: (antenna: Antenna) => void
 }
 
+/**
+ * Floating search bar anchored to the bottom-centre of the map.
+ * Searches across antenna names, site IDs, and incident numbers in one pass,
+ * deduplicating by antenna id so the same site never appears twice.
+ *
+ * @param antennas - Full antenna list for name/siteId matching.
+ * @param onSelect - Called with the matching antenna when a result is clicked.
+ */
 export function MapSearch({ antennas, onSelect }: Props) {
   const [expanded, setExpanded]   = useState(false)
   const [query, setQuery]         = useState('')
@@ -34,9 +43,11 @@ export function MapSearch({ antennas, onSelect }: Props) {
     const q = normalize(query.trim())
     if (!q) return []
 
+    // seen guards against duplicate antenna entries from both antenna and incident passes
     const seen = new Set<string>()
     const out: Result[] = []
 
+    // First pass: match by antenna name or site ID
     for (const a of antennas) {
       if (normalize(a.name).includes(q) || normalize(a.siteId).includes(q)) {
         if (!seen.has(a.id)) {
@@ -46,6 +57,7 @@ export function MapSearch({ antennas, onSelect }: Props) {
       }
     }
 
+    // Second pass: match by incident number or site ID, showing the incident ref as the label
     for (const inc of incidents) {
       if (normalize(inc.incidentNumber).includes(q) || normalize(inc.siteId).includes(q)) {
         const antenna = antennas.find(a => a.id === inc.antennaId)
@@ -56,11 +68,13 @@ export function MapSearch({ antennas, onSelect }: Props) {
       }
     }
 
+    // Cap results to keep the dropdown manageable
     return out.slice(0, 40)
   }, [query, antennas, incidents])
 
   function handleExpand() {
     setExpanded(true)
+    // Small delay lets the width animation start before we attempt to focus the input
     setTimeout(() => inputRef.current?.focus(), 50)
   }
 

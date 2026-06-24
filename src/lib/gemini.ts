@@ -35,12 +35,21 @@ RULES:
 }
 `
 
+/**
+ * Calls the Gemini model with live weather data and asks it to predict network
+ * outage risk across Romanian cities. Returns a structured JSON object with
+ * an `outlook` summary, a `riskZones` array (max 4 cities), and a field
+ * engineer `recommendation`.
+ *
+ * Only cities with non-low weather risk are sent to the model to reduce prompt
+ * size and keep responses focused on actionable issues.
+ */
 export async function getOutagePrediction(weatherData: CityWeatherDetail[]) {
   if (!process.env.GOOGLE_GEMINI_API_KEY) {
     throw new Error('GOOGLE_GEMINI_API_KEY is not configured')
   }
 
-  // Filter for cities with non-low risk to keep prompt size small and focus on issues
+  // Strip low-risk cities before building the prompt to keep token usage low.
   const relevantData = weatherData
     .filter(w => w.risk !== 'low')
     .map(w => ({
@@ -63,11 +72,11 @@ If no cities are at risk, return an empty riskZones array but still provide an o
   const response = await result.response
   const text = response.text()
 
-  // Clean up potential markdown formatting in AI response
+  // Extract the JSON object even if the model wraps it in markdown code fences.
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (jsonMatch) {
     return JSON.parse(jsonMatch[0])
   }
-  
+
   throw new Error('AI response was not in valid JSON format')
 }
